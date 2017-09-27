@@ -171,15 +171,41 @@ unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *se
     
     // Iterate over every sensor value
     for (int sensorValueIdx = startingSensorValueIdx; sensorValueIdx < 25; sensorValueIdx++) {
+    	// If sensor value is negative, use the opposite sensor motion
+    	char *effectiveKey;
+    	int effectiveValue;
+		if (sensor_values[sensorValueIdx].value < 0) {
+			if (!strcmp(sensor_values[sensorValueIdx].key, "CW")) {
+				effectiveKey = "CCW";
+			} else if (!strcmp(sensor_values[sensorValueIdx].key, "CCW")) {
+				effectiveKey = "CW";
+			} else if (!strcmp(sensor_values[sensorValueIdx].key, "MX") ||
+				!strcmp(sensor_values[sensorValueIdx].key, "MY")) {
+				effectiveKey = sensor_values[sensorValueIdx].key;
+			} else if (!strcmp(sensor_values[sensorValueIdx].key, "W")) { // Up
+				effectiveKey = "S";
+			} else if (!strcmp(sensor_values[sensorValueIdx].key, "S")) { // Down
+				effectiveKey = "W";
+			} else if (!strcmp(sensor_values[sensorValueIdx].key, "D")) { // Right
+				effectiveKey = "A";
+			} else if (!strcmp(sensor_values[sensorValueIdx].key, "A")) { // Left
+				effectiveKey = "D";
+			}
+			effectiveValue = -1 * sensor_values[sensorValueIdx].value;
+		} else {
+			effectiveKey = sensor_values[sensorValueIdx].key;
+			effectiveValue = sensor_values[sensorValueIdx].value;
+		}
+    	
 		// Rotations affect rotation state
-		if (!strcmp(sensor_values[sensorValueIdx].key, "CW")) {
-			currentRotation = (currentRotation + sensor_values[sensorValueIdx].value) % 4;
-		} else if (!strcmp(sensor_values[sensorValueIdx].key, "CCW")) {
-			currentRotation = (currentRotation - sensor_values[sensorValueIdx].value) % 4;
+		if (!strcmp(effectiveKey, "CW")) {
+			currentRotation = (currentRotation + effectiveValue) % 4;
+		} else if (!strcmp(effectiveKey, "CCW")) {
+			currentRotation = (currentRotation - effectiveValue) % 4;
 		}
 		
 		// Flips affect flip state
-		else if (!strcmp(sensor_values[sensorValueIdx].key, "MX")) {
+		else if (!strcmp(effectiveKey, "MX")) {
 			if(currentRotation == ROTATION_UPRIGHT) {
 				isFlippedAcrossXAxis = !isFlippedAcrossXAxis;
 			} else if(currentRotation == ROTATION_RIGHT) {
@@ -189,7 +215,7 @@ unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *se
 			} else /* ROTATION_LEFT */ {
 				isFlippedAcrossYAxis = !isFlippedAcrossYAxis;
 			}
-		} else if (!strcmp(sensor_values[sensorValueIdx].key, "MY")) {
+		} else if (!strcmp(effectiveKey, "MY")) {
 			if(currentRotation == ROTATION_UPRIGHT) {
 				isFlippedAcrossYAxis = !isFlippedAcrossYAxis;
 			} else if(currentRotation == ROTATION_RIGHT) {
@@ -202,52 +228,52 @@ unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *se
 		}
 		
 		// Compute translation state based on current rotation and flip state
-		else if (!strcmp(sensor_values[sensorValueIdx].key, "W")) { // Up
+		else if (!strcmp(effectiveKey, "W")) { // Up
 			if(currentRotation == ROTATION_UPRIGHT) {
-				accumulatedYTranslation += isFlippedAcrossXAxis ? -1 : 1;
+				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * effectiveValue;
 			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedXTranslation += isFlippedAcrossXAxis ? -1 : 1;
+				accumulatedXTranslation += (isFlippedAcrossXAxis ? -1 : 1) * effectiveValue;
 			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				accumulatedYTranslation += isFlippedAcrossXAxis ? 1 : -1;
+				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
 			} else /* ROTATION_LEFT */ {
-				accumulatedXTranslation += isFlippedAcrossXAxis ? 1 : -1;
+				accumulatedXTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
 			}
-		} else if (!strcmp(sensor_values[sensorValueIdx].key, "S")) { // Down
+		} else if (!strcmp(effectiveKey, "S")) { // Down
 			if(currentRotation == ROTATION_UPRIGHT) {
-				accumulatedYTranslation += isFlippedAcrossXAxis ? 1 : -1;
+				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
 			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedXTranslation += isFlippedAcrossXAxis ? 1 : -1;
+				accumulatedXTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
 			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				accumulatedYTranslation += isFlippedAcrossXAxis ? -1 : 1;
+				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * effectiveValue;
 			} else /* ROTATION_LEFT */ {
-				accumulatedXTranslation += isFlippedAcrossXAxis ? -1 : 1;
+				accumulatedXTranslation += (isFlippedAcrossXAxis ? -1 : 1) * effectiveValue;
 			}
-		} else if (!strcmp(sensor_values[sensorValueIdx].key, "D")) { // Right
+		} else if (!strcmp(effectiveKey, "D")) { // Right
 			if(currentRotation == ROTATION_UPRIGHT) {
-				accumulatedXTranslation += isFlippedAcrossYAxis ? -1 : 1;
+				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
 			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedYTranslation += isFlippedAcrossYAxis ? -1 : 1;
+				accumulatedYTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
 			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				accumulatedXTranslation += isFlippedAcrossYAxis ? 1 : -1;
+				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
 			} else /* ROTATION_LEFT */ {
-				accumulatedYTranslation += isFlippedAcrossYAxis ? 1 : -1;
+				accumulatedYTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
 			}
-		} else if (!strcmp(sensor_values[sensorValueIdx].key, "A")) { // Left
+		} else if (!strcmp(effectiveKey, "A")) { // Left
 			if(currentRotation == ROTATION_UPRIGHT) {
-				accumulatedXTranslation += isFlippedAcrossYAxis ? 1 : -1;
+				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
 			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedYTranslation += isFlippedAcrossYAxis ? 1 : -1;
+				accumulatedYTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
 			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				accumulatedXTranslation += isFlippedAcrossYAxis ? -1 : 1;
+				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
 			} else /* ROTATION_LEFT */ {
-				accumulatedYTranslation += isFlippedAcrossYAxis ? -1 : 1;
+				accumulatedYTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
 			}
 		}
     }
     
-    printf("xTranslate: %d, yTranslate: %d\n", accumulatedXTranslation, accumulatedYTranslation);
-    printf("flipped across x: %d, flipped across y: %d\n", isFlippedAcrossXAxis, isFlippedAcrossYAxis);
-    printf("rotation: %d\n", currentRotation);
+    //printf("xTranslate: %d, yTranslate: %d\n", accumulatedXTranslation, accumulatedYTranslation);
+    //printf("flipped across x: %d, flipped across y: %d\n", isFlippedAcrossXAxis, isFlippedAcrossYAxis);
+    //printf("rotation: %d\n", currentRotation);
     
     // Apply the translations
     if(accumulatedXTranslation > 0) {
@@ -324,10 +350,10 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
     implementation_driver_ref(sensor_values, sensor_values_count, reference_frame, width, height, grading_mode);
     
     // DEBUG: print original and ref frame
-	printf("Original:\n");
-    print_frame_buffer_to_terminal(frame_buffer, width, height);
-	printf("Reference:\n");
-	print_frame_buffer_to_terminal(reference_frame, width, height);
+	//printf("Original:\n");
+    //print_frame_buffer_to_terminal(frame_buffer, width, height);
+	//printf("Reference:\n");
+	//print_frame_buffer_to_terminal(reference_frame, width, height);
     
     // Iterate over every group of 25 sensor values
     for (int sensorValueIdx = 0; sensorValueIdx < sensor_values_count; sensorValueIdx += 25) {
@@ -341,8 +367,8 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
     	frame_buffer = compound_sensor_values(frame_buffer, sensor_values, sensorValueIdx, width, height);
     	
     	// DEBUG: print processed frame
-		printf("After %d iterations:\n", (sensorValueIdx + 1) * 25);
-		print_frame_buffer_to_terminal(frame_buffer, width, height);
+		//printf("After %d iterations:\n", (sensorValueIdx + 1) * 25);
+		//print_frame_buffer_to_terminal(frame_buffer, width, height);
     	
     	// Verify the new frame
         verifyFrame(frame_buffer, width, height, grading_mode);
