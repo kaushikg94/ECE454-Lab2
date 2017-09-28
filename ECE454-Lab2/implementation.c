@@ -170,18 +170,15 @@ unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *se
     int accumulatedYTranslation = 0;
     
     // Iterate over every sensor value
-    for (int sensorValueIdx = startingSensorValueIdx; sensorValueIdx < 25; sensorValueIdx++) {
+    for (int sensorValueIdx = startingSensorValueIdx; sensorValueIdx < startingSensorValueIdx + 25; sensorValueIdx++) {
     	// If sensor value is negative, use the opposite sensor motion
-    	char *effectiveKey;
-    	int effectiveValue;
+    	char *effectiveKey = sensor_values[sensorValueIdx].key;
+    	int effectiveValue = sensor_values[sensorValueIdx].value;
 		if (sensor_values[sensorValueIdx].value < 0) {
 			if (!strcmp(sensor_values[sensorValueIdx].key, "CW")) {
 				effectiveKey = "CCW";
 			} else if (!strcmp(sensor_values[sensorValueIdx].key, "CCW")) {
 				effectiveKey = "CW";
-			} else if (!strcmp(sensor_values[sensorValueIdx].key, "MX") ||
-				!strcmp(sensor_values[sensorValueIdx].key, "MY")) {
-				effectiveKey = sensor_values[sensorValueIdx].key;
 			} else if (!strcmp(sensor_values[sensorValueIdx].key, "W")) { // Up
 				effectiveKey = "S";
 			} else if (!strcmp(sensor_values[sensorValueIdx].key, "S")) { // Down
@@ -192,9 +189,6 @@ unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *se
 				effectiveKey = "D";
 			}
 			effectiveValue = -1 * sensor_values[sensorValueIdx].value;
-		} else {
-			effectiveKey = sensor_values[sensorValueIdx].key;
-			effectiveValue = sensor_values[sensorValueIdx].value;
 		}
     	
 		// Rotations affect rotation state
@@ -202,6 +196,9 @@ unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *se
 			currentRotation = (currentRotation + effectiveValue) % 4;
 		} else if (!strcmp(effectiveKey, "CCW")) {
 			currentRotation = (currentRotation - effectiveValue) % 4;
+			if(currentRotation < 0) {
+				currentRotation = 4 + currentRotation;
+			}
 		}
 		
 		// Flips affect flip state
@@ -230,50 +227,51 @@ unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *se
 		// Compute translation state based on current rotation and flip state
 		else if (!strcmp(effectiveKey, "W")) { // Up
 			if(currentRotation == ROTATION_UPRIGHT) {
+				// The motion here should be the motion in the rotated space, but the translation in the og space
 				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * effectiveValue;
 			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedXTranslation += (isFlippedAcrossXAxis ? -1 : 1) * effectiveValue;
+				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
 			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
 				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
 			} else /* ROTATION_LEFT */ {
-				accumulatedXTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
+				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
 			}
 		} else if (!strcmp(effectiveKey, "S")) { // Down
 			if(currentRotation == ROTATION_UPRIGHT) {
 				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
 			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedXTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
+				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
 			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
 				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * effectiveValue;
 			} else /* ROTATION_LEFT */ {
-				accumulatedXTranslation += (isFlippedAcrossXAxis ? -1 : 1) * effectiveValue;
+				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
 			}
 		} else if (!strcmp(effectiveKey, "D")) { // Right
 			if(currentRotation == ROTATION_UPRIGHT) {
 				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
 			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedYTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
+				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * effectiveValue;
 			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
 				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
 			} else /* ROTATION_LEFT */ {
-				accumulatedYTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
+				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
 			}
 		} else if (!strcmp(effectiveKey, "A")) { // Left
 			if(currentRotation == ROTATION_UPRIGHT) {
 				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
 			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedYTranslation += (isFlippedAcrossYAxis ? 1 : -1) * effectiveValue;
+				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
 			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
 				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
 			} else /* ROTATION_LEFT */ {
-				accumulatedYTranslation += (isFlippedAcrossYAxis ? -1 : 1) * effectiveValue;
+				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * effectiveValue;
 			}
 		}
     }
     
-    //printf("xTranslate: %d, yTranslate: %d\n", accumulatedXTranslation, accumulatedYTranslation);
-    //printf("flipped across x: %d, flipped across y: %d\n", isFlippedAcrossXAxis, isFlippedAcrossYAxis);
-    //printf("rotation: %d\n", currentRotation);
+    printf("xTranslate: %d, yTranslate: %d\n", accumulatedXTranslation, accumulatedYTranslation);
+    printf("flipped across x: %d, flipped across y: %d\n", isFlippedAcrossXAxis, isFlippedAcrossYAxis);
+    printf("rotation: %d\n", currentRotation);
     
     // Apply the translations
     if(accumulatedXTranslation > 0) {
