@@ -31,36 +31,23 @@ unsigned char *processMoveUp(unsigned char *buffer_frame, unsigned width, unsign
     if (offset < 0){
         return processMoveDown(buffer_frame, width, height, offset * -1);
     }
-
-    // allocate memory for temporary image buffer
-    unsigned char *rendered_frame = allocateFrame(width, height);
-
+    
     // store shifted pixels to temporary buffer
     for (int row = 0; row < (height - offset); row++) {
-        for (int column = 0; column < width; column++) {
-            int position_rendered_frame = row * width * 3 + column * 3;
-            int position_buffer_frame = (row + offset) * width * 3 + column * 3;
-            rendered_frame[position_rendered_frame] = buffer_frame[position_buffer_frame];
-            rendered_frame[position_rendered_frame + 1] = buffer_frame[position_buffer_frame + 1];
-            rendered_frame[position_rendered_frame + 2] = buffer_frame[position_buffer_frame + 2];
+        for (int column = 0; column < width * 3; column++) {
+            int position_above = row * width * 3 + column;
+            int position_below = (row + offset) * width * 3 + column;
+            buffer_frame[position_above] = buffer_frame[position_below];
         }
     }
 
     // fill left over pixels with white pixels
     for (int row = (height - offset); row < height; row++) {
-        for (int column = 0; column < width; column++) {
-            int position_rendered_frame = row * width * 3 + column * 3;
-            rendered_frame[position_rendered_frame] = 255;
-            rendered_frame[position_rendered_frame + 1] = 255;
-            rendered_frame[position_rendered_frame + 2] = 255;
+        for (int column = 0; column < width * 3; column++) {
+            int position_rendered_frame = row * width * 3 + column;
+            buffer_frame[position_rendered_frame] = 255;
         }
     }
-
-    // copy the temporary buffer back to original frame buffer
-    buffer_frame = copyFrame(rendered_frame, buffer_frame, width, height);
-
-    // free temporary image buffer
-    deallocateFrame(rendered_frame);
 
     // return a pointer to the updated image buffer
     return buffer_frame;
@@ -81,36 +68,23 @@ unsigned char *processMoveDown(unsigned char *buffer_frame, unsigned width, unsi
         return processMoveUp(buffer_frame, width, height, offset * -1);
     }
 
-    // allocate memory for temporary image buffer
-    unsigned char *rendered_frame = allocateFrame(width, height);
-
     // store shifted pixels to temporary buffer
-    for (int row = offset; row < height; row++) {
-        for (int column = 0; column < width; column++) {
-            int position_rendered_frame = row * width * 3 + column * 3;
-            int position_buffer_frame = (row - offset) * width * 3 + column * 3;
-            rendered_frame[position_rendered_frame] = buffer_frame[position_buffer_frame];
-            rendered_frame[position_rendered_frame + 1] = buffer_frame[position_buffer_frame + 1];
-            rendered_frame[position_rendered_frame + 2] = buffer_frame[position_buffer_frame + 2];
+    for (int row = height - 1; row > offset - 1; row--) {
+        for (int column = 0; column < width * 3; column++) {
+            int position_below = row * width * 3 + column;
+            int position_above = (row - offset) * width * 3 + column;
+            buffer_frame[position_below] = buffer_frame[position_above];
         }
     }
 
     // fill left over pixels with white pixels
     for (int row = 0; row < offset; row++) {
-        for (int column = 0; column < width; column++) {
-            int position_rendered_frame = row * width * 3 + column * 3;
-            rendered_frame[position_rendered_frame] = 255;
-            rendered_frame[position_rendered_frame + 1] = 255;
-            rendered_frame[position_rendered_frame + 2] = 255;
+        for (int column = 0; column < width * 3; column++) {
+            int position_rendered_frame = row * width * 3 + column;
+            buffer_frame[position_rendered_frame] = 255;
         }
     }
-
-    // copy the temporary buffer back to original frame buffer
-    buffer_frame = copyFrame(rendered_frame, buffer_frame, width, height);
-
-    // free temporary image buffer
-    deallocateFrame(rendered_frame);
-
+    
     // return a pointer to the updated image buffer
     return buffer_frame;
 }
@@ -354,6 +328,7 @@ void print_team_info(){
 }
 
 // Function that prints the given frame buffer to terminal in a ledgible format
+// usage: print_frame_buffer_to_terminal(buffer_frame, width, height);
 void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int width, unsigned int height) {
 	for (int col = 0; col < width; col++) printf("=");
 	printf("\n");
