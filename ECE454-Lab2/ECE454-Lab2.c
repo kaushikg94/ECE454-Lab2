@@ -257,7 +257,8 @@ int main(int argc, char **argv) {
         set_fcyc_clear_cache(1);        // clear the cache before each measurement
         set_fcyc_compensate(1);         // try to compensate for timer overhead
 
-        double num_cycles_reference = 33464883639;	//fcyc_v((test_funct_v)&implementation_driver_reference_wraper, arglist);
+        //double num_cycles_reference = 33464883639;
+        double num_cycles_reference = fcyc_v((test_funct_v)&implementation_driver_reference_wraper, arglist);
         printf("\tNumber of cpu cycles consumed by the reference implementation: %.0f\n", num_cycles_reference);
 
         // Provide fresh copy of input frame buffer

@@ -4,6 +4,8 @@
 #include "utilities.h"  // DO NOT REMOVE this line
 #include "implementation_reference.h"   // DO NOT REMOVE this line
 
+//#define PRINTS 0
+
 /***********************************************************************************************************************
  * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
  * @param width - width of the imported 24-bit bitmap image
@@ -269,9 +271,12 @@ unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *se
 		}
     }
     
+#ifdef PRINTS
+	// DEBUG: print state
     printf("xTranslate: %d, yTranslate: %d\n", accumulatedXTranslation, accumulatedYTranslation);
     printf("flipped across x: %d, flipped across y: %d\n", isFlippedAcrossXAxis, isFlippedAcrossYAxis);
     printf("rotation: %d\n", currentRotation);
+#endif
     
     // Apply the translations
     if(accumulatedXTranslation > 0) {
@@ -343,9 +348,9 @@ void implementation_driver_ref(struct kv *sensor_values, int sensor_values_count
 void implementation_driver(struct kv *sensor_values, int sensor_values_count, unsigned char *frame_buffer,
                            unsigned int width, unsigned int height, bool grading_mode) {
     // DEBUG: make a copy of the original frame
-    unsigned char *reference_frame = allocateFrame(width, height);
-    reference_frame = copyFrame(frame_buffer, reference_frame, width, height);
-    implementation_driver_ref(sensor_values, sensor_values_count, reference_frame, width, height, grading_mode);
+    //unsigned char *reference_frame = allocateFrame(width, height);
+    //reference_frame = copyFrame(frame_buffer, reference_frame, width, height);
+    //implementation_driver_ref(sensor_values, sensor_values_count, reference_frame, width, height, grading_mode);
     
     // DEBUG: print original and ref frame
 	//printf("Original:\n");
