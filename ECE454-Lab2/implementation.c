@@ -341,7 +341,7 @@ void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int wi
 //#define USE_MAP_METHOD 0 // Use the contraversial map method instead of a chain of if-else statements
 
 // Function that compounds 25 sensor values into up to 3 transformations
-unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *sensor_values,
+static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *sensor_values,
 									  int startingSensorValueIdx, unsigned int width, unsigned int height) {
 
 #ifdef USE_MAP_METHOD
