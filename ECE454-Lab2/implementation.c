@@ -15,6 +15,9 @@ unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsi
 unsigned char *processRotateCCW(unsigned char *buffer_frame, unsigned width, unsigned height, int count);
 void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int width, unsigned int height);
 
+// Temporary image buffer for use by some transformations
+unsigned char *double_buffer_frame;
+
 /***********************************************************************************************************************
  * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
  * @param width - width of the imported 24-bit bitmap image
@@ -155,7 +158,6 @@ unsigned char *processMoveLeft(unsigned char *buffer_frame, unsigned width, unsi
  * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
  * Note: You can assume the frame will always be square and you will be rotating the entire image
  **********************************************************************************************************************/
-unsigned char *double_buffer_frame;
 unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsigned height) {
 	// Transform image data from buffer_frame into double_buffer_frame
     int render_column = width - 1;
@@ -203,15 +205,16 @@ unsigned char *processRotateCCW(unsigned char *buffer_frame, unsigned width, uns
  **********************************************************************************************************************/
 unsigned char *processMirrorX(unsigned char *buffer_frame, unsigned int width, unsigned int height, int _unused) {
     // Flip the pixels in place
-    for (int row = 0; row < height / 2; row++) {
-        for (int column = 0; column < width * 3; column++) {
-        	int position_top = row * width * 3 + column;
-        	int position_bottom = (height - row - 1) * width * 3 + column;
-        	unsigned char temp = buffer_frame[position_top];
-        	buffer_frame[position_top] = buffer_frame[position_bottom];
-        	buffer_frame[position_bottom] = temp;
-        }
+    for (int row = 0; row < height; row++) {
+    	int destination = (height - 1 - row) * width * 3;
+    	int source = row * width * 3;
+    	memcpy(double_buffer_frame + destination, buffer_frame + source, width * 3);
     }
+    
+    // Swap buffer_frame and double_buffer_frame
+    unsigned char *temp = buffer_frame;
+    buffer_frame = double_buffer_frame;
+    double_buffer_frame = temp;
 
     return buffer_frame;
 }
