@@ -32,11 +32,9 @@ unsigned char *processMoveUp(unsigned char *buffer_frame, unsigned width, unsign
     
     // store shifted pixels to temporary buffer
     for (int row = 0; row < (height - offset); row++) {
-        for (int column = 0; column < width * 3; column++) {
-            int position_above = row * width * 3 + column;
-            int position_below = (row + offset) * width * 3 + column;
-            buffer_frame[position_above] = buffer_frame[position_below];
-        }
+        int row_above = row * width * 3;
+        int row_below = (row + offset) * width * 3;
+    	memcpy(buffer_frame + row_above, buffer_frame + row_below, width * 3);
     }
 
     // fill left over pixels with white pixels
@@ -68,11 +66,9 @@ unsigned char *processMoveDown(unsigned char *buffer_frame, unsigned width, unsi
 
     // store shifted pixels to temporary buffer
     for (int row = height - 1; row > offset - 1; row--) {
-        for (int column = 0; column < width * 3; column++) {
-            int position_below = row * width * 3 + column;
-            int position_above = (row - offset) * width * 3 + column;
-            buffer_frame[position_below] = buffer_frame[position_above];
-        }
+        int row_below = row * width * 3;
+    	int row_above = (row - offset) * width * 3;
+    	memcpy(buffer_frame + row_below, buffer_frame + row_above, width * 3);
     }
 
     // fill left over pixels with white pixels
@@ -104,11 +100,9 @@ unsigned char *processMoveRight(unsigned char *buffer_frame, unsigned width, uns
 
     // store shifted pixels to temporary buffer
     for (int row = 0; row < height; row++) {
-        for (int column = width * 3 - 1; column > offset * 3 - 1; column--) {
-            int position_right = row * width * 3 + column;
-            int position_left = row * width * 3 + (column - 3 * offset);
-            buffer_frame[position_right] = buffer_frame[position_left];
-        }
+        int position_right = row * width * 3 + offset * 3;
+        int position_left = row * width * 3;
+    	memmove(buffer_frame + position_right, buffer_frame + position_left, (width - offset) * 3);
     }
 
     // fill left over pixels with white pixels
@@ -140,11 +134,9 @@ unsigned char *processMoveLeft(unsigned char *buffer_frame, unsigned width, unsi
 
     // store shifted pixels to temporary buffer
     for (int row = 0; row < height; row++) {
-        for (int column = 0; column < (width - offset) * 3; column++) {
-            int position_left = row * width * 3 + column;
-            int position_right = row * width * 3 + column + offset * 3;
-            buffer_frame[position_left] = buffer_frame[position_right];
-        }
+        int position_left = row * width * 3;
+        int position_right = row * width * 3 + offset * 3;
+    	memmove(buffer_frame + position_left, buffer_frame + position_right, (width - offset) * 3);
     }
 
     // fill left over pixels with white pixels
@@ -512,10 +504,12 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
     	}
     	
     	// Process this group of 25 sensor values
+    	//print_frame_buffer_to_terminal(frame_buffer, width, height);
     	frame_buffer = compound_sensor_values(frame_buffer, sensor_values, sensorValueIdx, width, height);
+    	//print_frame_buffer_to_terminal(frame_buffer, width, height);
     	
     	// Verify the new frame
-        verifyFrame(frame_buffer, width, height, grading_mode);
+        verifyFrame(frame_buffer, width, height, grading_mode); //TODO
     }
     
     // Free double buffer frame for rotations
