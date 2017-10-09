@@ -338,106 +338,9 @@ void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int wi
 #define SENSOR_D   0b100 // 4
 #define SENSOR_A   0b011 // 3
 
-//#define USE_MAP_METHOD 0 // Use the contraversial map method instead of a chain of if-else statements
-
 // Function that compounds 25 sensor values into up to 3 transformations
 static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *sensor_values,
 									  int startingSensorValueIdx, unsigned int width, unsigned int height) {
-
-#ifdef USE_MAP_METHOD
-    // Mapping from sensor key and current state to reaction function
-	// [1 bit isFlippedX] [1 bit isFlippedY] [2 bits rotation] [3 bits sensor input]
-	static void *stateToReaction[128] = {
-		// Rotations
-		[0b0000000] = &&rotate_cw,
-		[0b0000111] = &&rotate_ccw,
-	
-		// Mirror across X axis
-		[0b0000001] = &&mirror_x,
-		[0b0001001] = &&mirror_y,
-		[0b0010001] = &&mirror_x,
-		[0b0011001] = &&mirror_y,
-	
-		// Mirror across Y axis
-		[0b0000110] = &&mirror_y,
-		[0b0001110] = &&mirror_x,
-		[0b0010110] = &&mirror_y,
-		[0b0011110] = &&mirror_x,
-	
-		// W (up)
-		[0b0000010] = &&translate_y_positive,
-		[0b0001010] = &&translate_x_negative,
-		[0b0010010] = &&translate_y_negative,
-		[0b0011010] = &&translate_x_positive,
-		[0b0100010] = &&translate_y_positive,
-		[0b0101010] = &&translate_x_positive,
-		[0b0110010] = &&translate_y_negative,
-		[0b0111010] = &&translate_x_negative,
-		[0b1000010] = &&translate_y_negative,
-		[0b1001010] = &&translate_x_negative,
-		[0b1010010] = &&translate_y_positive,
-		[0b1011010] = &&translate_x_positive,
-		[0b1100010] = &&translate_y_negative,
-		[0b1101010] = &&translate_x_positive,
-		[0b1110010] = &&translate_y_positive,
-		[0b1111010] = &&translate_x_negative,
-	
-		// S (down)
-		[0b0000101] = &&translate_y_negative,
-		[0b0001101] = &&translate_x_positive,
-		[0b0010101] = &&translate_y_positive,
-		[0b0011101] = &&translate_x_negative,
-		[0b0100101] = &&translate_y_negative,
-		[0b0101101] = &&translate_x_negative,
-		[0b0110101] = &&translate_y_positive,
-		[0b0111101] = &&translate_x_positive,
-		[0b1000101] = &&translate_y_positive,
-		[0b1001101] = &&translate_x_positive,
-		[0b1010101] = &&translate_y_negative,
-		[0b1011101] = &&translate_x_negative,
-		[0b1100101] = &&translate_y_positive,
-		[0b1101101] = &&translate_x_negative,
-		[0b1110101] = &&translate_y_negative,
-		[0b1111101] = &&translate_x_positive,
-	
-		// D (right)
-		[0b0000100] = &&translate_x_positive,
-		[0b0001100] = &&translate_y_positive,
-		[0b0010100] = &&translate_x_negative,
-		[0b0011100] = &&translate_y_negative,
-		[0b0100100] = &&translate_x_negative,
-		[0b0101100] = &&translate_y_positive,
-		[0b0110100] = &&translate_x_positive,
-		[0b0111100] = &&translate_y_negative,
-		[0b1000100] = &&translate_x_positive,
-		[0b1001100] = &&translate_y_negative,
-		[0b1010100] = &&translate_x_negative,
-		[0b1011100] = &&translate_y_positive,
-		[0b1100100] = &&translate_x_negative,
-		[0b1101100] = &&translate_y_negative,
-		[0b1110100] = &&translate_x_positive,
-		[0b1111100] = &&translate_y_positive,
-	
-		// A (left)
-		[0b0000011] = &&translate_x_negative,
-		[0b0001011] = &&translate_y_negative,
-		[0b0010011] = &&translate_x_positive,
-		[0b0011011] = &&translate_y_negative,
-		[0b0100011] = &&translate_x_positive,
-		[0b0101011] = &&translate_y_negative,
-		[0b0110011] = &&translate_x_negative,
-		[0b0111011] = &&translate_y_negative,
-		[0b1000011] = &&translate_x_negative,
-		[0b1001011] = &&translate_y_positive,
-		[0b1010011] = &&translate_x_positive,
-		[0b1011011] = &&translate_y_positive,
-		[0b1100011] = &&translate_x_positive,
-		[0b1101011] = &&translate_y_positive,
-		[0b1110011] = &&translate_x_negative,
-		[0b1111011] = &&translate_y_positive,
-	};
-#endif
-    
     // Variables to keep track of current accumulated state
     int currentRotation = ROTATION_UPRIGHT;
     bool isFlippedAcrossXAxis = false;
@@ -479,54 +382,6 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
 			}
     	}
     	
-#ifdef USE_MAP_METHOD
-    	// Layout of stateAndSensorInput:
-    	// [32-7 bits unused][1 bit isFlippedX][1 bit isFlippedY][2 bits rotation][3 bits sensor input]
-    	int stateAndSensorInput = (isFlippedAcrossXAxis ? 0b1000000 : 0) |
-    							  (isFlippedAcrossYAxis ? 0b0100000 : 0) |
-    							  (sensorKey);
-		stateAndSensorInput |= currentRotation << 3;
-		if(sensorKey == SENSOR_CW || sensorKey == SENSOR_CCW) stateAndSensorInput &= 0b0111;
-		else if(sensorKey == SENSOR_MX || sensorKey == SENSOR_MY) stateAndSensorInput &= 0b011111;
-    	goto *stateToReaction[stateAndSensorInput];
-    	
-	rotate_cw:
-		currentRotation = (currentRotation + sensorValue) % 4;
-		continue;
-		
-	rotate_ccw:
-		currentRotation = (currentRotation - sensorValue) % 4;
-		if(currentRotation < 0) {
-			currentRotation = 4 + currentRotation;
-		}
-		continue;
-		
-	mirror_x:
-		isFlippedAcrossXAxis = !isFlippedAcrossXAxis;
-		continue;
-		
-	mirror_y:
-		isFlippedAcrossYAxis = !isFlippedAcrossYAxis;
-		continue;
-		
-	translate_x_positive:
-		accumulatedXTranslation += sensorValue;
-		continue;
-		
-	translate_x_negative:
-		accumulatedXTranslation -= sensorValue;
-		continue;
-		
-	translate_y_positive:
-		accumulatedYTranslation += sensorValue;
-		continue;
-		
-	translate_y_negative:
-		accumulatedYTranslation -= sensorValue;
-		continue;
-#endif
-
-#ifndef USE_MAP_METHOD
 		// Rotations affect rotation state
 		if (sensorKey == SENSOR_CW) {
 			currentRotation = (currentRotation + sensorValue) % 4;
@@ -603,7 +458,6 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
 				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * sensorValue;
 			}
 		}
-#endif
     }
     
 #ifdef PRINTS
