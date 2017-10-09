@@ -4,7 +4,8 @@
 #include "utilities.h"  // DO NOT REMOVE this line
 #include "implementation_reference.h"   // DO NOT REMOVE this line
 
-//#define PRINTS 0
+//#define PRINT_DEBUG_INFO 0 // Print info about compounded 25 sensor values
+//#define DISPLAY_IMAGE_IN_TERMINAL 0 // Displays each verification frame in terminal
 
 // Declarations
 unsigned char *processMoveUp(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
@@ -150,21 +151,36 @@ unsigned char *processMoveLeft(unsigned char *buffer_frame, unsigned width, unsi
  * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
  * Note: You can assume the frame will always be square and you will be rotating the entire image
  **********************************************************************************************************************/
+#define TILE_SIZE 64 // TODO find optimal size
 unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsigned height) {
-	// Transform image data from buffer_frame into double_buffer_frame
-    int render_column = width - 1;
-    int render_row = 0;
-    for (int row = 0; row < width; row++) {
-        for (int column = 0; column < height; column++) {
-            int position_frame_buffer = row * width * 3 + column * 3;
-            double_buffer_frame[render_row * width * 3 + render_column * 3] = buffer_frame[position_frame_buffer];
-            double_buffer_frame[render_row * width * 3 + render_column * 3 + 1] = buffer_frame[position_frame_buffer + 1];
-            double_buffer_frame[render_row * width * 3 + render_column * 3 + 2] = buffer_frame[position_frame_buffer + 2];
-            render_row += 1;
-        }
-        render_row = 0;
-        render_column -= 1;
-    }
+	// Compute information about tiles
+	// In destination: u=row#, v=col#
+	// In source:      u=col#, v=row#
+	unsigned nTiles = (width + TILE_SIZE - 1) / TILE_SIZE; // Include a partial tile at end if applicable
+	unsigned lastTileSize = width % TILE_SIZE;
+	if(lastTileSize == 0) lastTileSize = TILE_SIZE;
+	
+	// Iterate over each tile
+	for(unsigned uTileIndex = 0; uTileIndex < nTiles; uTileIndex++) {
+		for(unsigned vTileIndex = 0; vTileIndex < nTiles; vTileIndex++) {
+			// Determine current tile size
+			unsigned uLimit = uTileIndex * TILE_SIZE +
+							  ((uTileIndex == nTiles - 1) ? lastTileSize : TILE_SIZE);
+			unsigned vLimit = vTileIndex * TILE_SIZE +
+							  ((vTileIndex == nTiles - 1) ? lastTileSize : TILE_SIZE);
+			
+			// Transform current tile
+			for(unsigned u = uTileIndex * TILE_SIZE; u < uLimit; u++) {
+				for(unsigned v = vTileIndex * TILE_SIZE; v < vLimit; v++) {
+					unsigned sourcePixelIndex = (height - 1 - v) * width * 3 + u * 3;
+					unsigned destinationPixelIndex = u * width * 3 + v * 3;
+					double_buffer_frame[destinationPixelIndex] = buffer_frame[sourcePixelIndex];
+					double_buffer_frame[destinationPixelIndex + 1] = buffer_frame[sourcePixelIndex + 1];
+					double_buffer_frame[destinationPixelIndex + 2] = buffer_frame[sourcePixelIndex + 2];
+				}
+			}
+		}
+	}
     
     // Swap buffer_frame and double_buffer_frame
     unsigned char *temp = buffer_frame;
@@ -429,7 +445,7 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
 		}
     }
     
-#ifdef PRINTS
+#ifdef PRINT_DEBUG_INFO
 	// DEBUG: print state
     printf("xTranslate: %d, yTranslate: %d\n", accumulatedXTranslation, accumulatedYTranslation);
     printf("flipped across x: %d, flipped across y: %d\n", isFlippedAcrossXAxis, isFlippedAcrossYAxis);
@@ -485,6 +501,11 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
                            unsigned int width, unsigned int height, bool grading_mode) {
 	// Set up double buffer frame for rotations
 	double_buffer_frame = allocateFrame(width, height);
+	
+#ifdef DISPLAY_IMAGE_IN_TERMINAL
+		printf("Starting frame:\n");
+    	print_frame_buffer_to_terminal(frame_buffer, width, height);
+#endif
     
     // Iterate over every group of 25 sensor values
     for (int sensorValueIdx = 0; sensorValueIdx < sensor_values_count; sensorValueIdx += 25) {
@@ -495,9 +516,11 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
     	}
     	
     	// Process this group of 25 sensor values
-    	//print_frame_buffer_to_terminal(frame_buffer, width, height);
     	frame_buffer = compound_sensor_values(frame_buffer, sensor_values, sensorValueIdx, width, height);
-    	//print_frame_buffer_to_terminal(frame_buffer, width, height);
+#ifdef DISPLAY_IMAGE_IN_TERMINAL
+		printf("Frame %d:\n", (sensorValueIdx / 25 + 1));
+    	print_frame_buffer_to_terminal(frame_buffer, width, height);
+#endif
     	
     	// Verify the new frame
         verifyFrame(frame_buffer, width, height, grading_mode); //TODO
