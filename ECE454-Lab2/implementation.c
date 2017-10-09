@@ -31,11 +31,9 @@ unsigned char *processMoveUp(unsigned char *buffer_frame, unsigned width, unsign
     }
     
     // store shifted pixels to temporary buffer
-    for (int row = 0; row < (height - offset); row++) {
-        int row_above = row * width * 3;
-        int row_below = (row + offset) * width * 3;
-    	memcpy(buffer_frame + row_above, buffer_frame + row_below, width * 3);
-    }
+    int destination = 0;
+    int source = offset * width * 3;
+	memmove(buffer_frame + destination, buffer_frame + source, (height - offset) * width * 3);
 
     // fill left over pixels with white pixels
     for (int row = (height - offset); row < height; row++) {
@@ -65,11 +63,9 @@ unsigned char *processMoveDown(unsigned char *buffer_frame, unsigned width, unsi
     }
 
     // store shifted pixels to temporary buffer
-    for (int row = height - 1; row > offset - 1; row--) {
-        int row_below = row * width * 3;
-    	int row_above = (row - offset) * width * 3;
-    	memcpy(buffer_frame + row_below, buffer_frame + row_above, width * 3);
-    }
+    int destination = offset * width * 3;
+    int source = 0;
+	memmove(buffer_frame + destination, buffer_frame + source, (height - offset) * width * 3);
 
     // fill left over pixels with white pixels
     for (int row = 0; row < offset; row++) {
