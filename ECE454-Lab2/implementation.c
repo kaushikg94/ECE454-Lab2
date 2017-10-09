@@ -39,12 +39,8 @@ unsigned char *processMoveUp(unsigned char *buffer_frame, unsigned width, unsign
 	memmove(buffer_frame + destination, buffer_frame + source, (height - offset) * width * 3);
 
     // fill left over pixels with white pixels
-    for (int row = (height - offset); row < height; row++) {
-        for (int column = 0; column < width * 3; column++) {
-            int position_rendered_frame = row * width * 3 + column;
-            buffer_frame[position_rendered_frame] = 255;
-        }
-    }
+    destination = (height - offset) * width * 3;
+    memset(buffer_frame + destination, 255, offset * width * 3);
 
     // return a pointer to the updated image buffer
     return buffer_frame;
@@ -71,12 +67,8 @@ unsigned char *processMoveDown(unsigned char *buffer_frame, unsigned width, unsi
 	memmove(buffer_frame + destination, buffer_frame + source, (height - offset) * width * 3);
 
     // fill left over pixels with white pixels
-    for (int row = 0; row < offset; row++) {
-        for (int column = 0; column < width * 3; column++) {
-            int position_rendered_frame = row * width * 3 + column;
-            buffer_frame[position_rendered_frame] = 255;
-        }
-    }
+    destination = 0;
+    memset(buffer_frame + destination, 255, offset * width * 3);
     
     // return a pointer to the updated image buffer
     return buffer_frame;
