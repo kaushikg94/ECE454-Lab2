@@ -11,10 +11,8 @@ unsigned char *processMoveUp(unsigned char *buffer_frame, unsigned width, unsign
 unsigned char *processMoveLeft(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
 unsigned char *processMoveDown(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
 unsigned char *processMoveRight(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
-unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsigned height,
-                                        int rotate_iteration);
-unsigned char *processRotateCCW(unsigned char *buffer_frame, unsigned width, unsigned height,
-                                        int rotate_iteration);
+unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsigned height);
+unsigned char *processRotateCCW(unsigned char *buffer_frame, unsigned width, unsigned height, int count);
 void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int width, unsigned int height);
 
 /***********************************************************************************************************************
@@ -169,40 +167,29 @@ unsigned char *processMoveLeft(unsigned char *buffer_frame, unsigned width, unsi
  * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
  * Note: You can assume the frame will always be square and you will be rotating the entire image
  **********************************************************************************************************************/
-unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsigned height,
-                               int rotate_iteration) {
-    // handle negative offsets
-    if (rotate_iteration < 0){
-        return processRotateCCW(buffer_frame, width, height, rotate_iteration * -1);
-    }
-
-    // allocate memory for temporary image buffer
-    unsigned char *rendered_frame = allocateFrame(width, height);
-
-    // store shifted pixels to temporary buffer
-    for (int iteration = 0; iteration < rotate_iteration; iteration++) {
-        int render_column = width - 1;
-        int render_row = 0;
-        for (int row = 0; row < width; row++) {
-            for (int column = 0; column < height; column++) {
-                int position_frame_buffer = row * width * 3 + column * 3;
-                rendered_frame[render_row * width * 3 + render_column * 3] = buffer_frame[position_frame_buffer];
-                rendered_frame[render_row * width * 3 + render_column * 3 + 1] = buffer_frame[position_frame_buffer + 1];
-                rendered_frame[render_row * width * 3 + render_column * 3 + 2] = buffer_frame[position_frame_buffer + 2];
-                render_row += 1;
-            }
-            render_row = 0;
-            render_column -= 1;
+unsigned char *double_buffer_frame;
+unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsigned height) {
+	// Transform image data from buffer_frame into double_buffer_frame
+    int render_column = width - 1;
+    int render_row = 0;
+    for (int row = 0; row < width; row++) {
+        for (int column = 0; column < height; column++) {
+            int position_frame_buffer = row * width * 3 + column * 3;
+            double_buffer_frame[render_row * width * 3 + render_column * 3] = buffer_frame[position_frame_buffer];
+            double_buffer_frame[render_row * width * 3 + render_column * 3 + 1] = buffer_frame[position_frame_buffer + 1];
+            double_buffer_frame[render_row * width * 3 + render_column * 3 + 2] = buffer_frame[position_frame_buffer + 2];
+            render_row += 1;
         }
-
-        // copy the temporary buffer back to original frame buffer
-        buffer_frame = copyFrame(rendered_frame, buffer_frame, width, height);
+        render_row = 0;
+        render_column -= 1;
     }
+    
+    // Swap buffer_frame and double_buffer_frame
+    unsigned char *temp = buffer_frame;
+    buffer_frame = double_buffer_frame;
+    double_buffer_frame = temp;
 
-    // free temporary image buffer
-    deallocateFrame(rendered_frame);
-
-    // return a pointer to the updated image buffer
+    // Return pointer to the updated image
     return buffer_frame;
 }
 
@@ -214,10 +201,9 @@ unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsi
  * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
  * Note: You can assume the frame will always be square and you will be rotating the entire image
  **********************************************************************************************************************/
-unsigned char *processRotateCCW(unsigned char *buffer_frame, unsigned width, unsigned height,
-                                int rotate_iteration) {
+unsigned char *processRotateCCW(unsigned char *buffer_frame, unsigned width, unsigned height, int count) {
     printf("WARNING: Not implemented\n");
-    return processRotateCCWReference(buffer_frame, width, height, rotate_iteration);
+    return processRotateCCWReference(buffer_frame, width, height, count);
 }
 
 /***********************************************************************************************************************
@@ -489,7 +475,10 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
     
     // Apply the rotations
     if(currentRotation != ROTATION_UPRIGHT) {
-    	frame_buffer = processRotateCW(frame_buffer, width, height, currentRotation);
+    	while(currentRotation != ROTATION_UPRIGHT) {
+    		frame_buffer = processRotateCW(frame_buffer, width, height);
+    		currentRotation--;
+    	}
     }
     
     return frame_buffer;
@@ -509,43 +498,10 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
  ***********************************************************************************************************************
  *
  **********************************************************************************************************************/
-// DEBUG: reference implementation driver for comparison
-void implementation_driver_ref(struct kv *sensor_values, int sensor_values_count, unsigned char *frame_buffer,
-                           unsigned int width, unsigned int height, bool grading_mode) {   
-    for (int sensorValueIdx = 0; sensorValueIdx < sensor_values_count; sensorValueIdx++) {
-        if (!strcmp(sensor_values[sensorValueIdx].key, "W")) {
-            frame_buffer = processMoveUp(frame_buffer, width, height, sensor_values[sensorValueIdx].value);
-        } else if (!strcmp(sensor_values[sensorValueIdx].key, "A")) {
-            frame_buffer = processMoveLeft(frame_buffer, width, height, sensor_values[sensorValueIdx].value);
-        } else if (!strcmp(sensor_values[sensorValueIdx].key, "S")) {
-            frame_buffer = processMoveDown(frame_buffer, width, height, sensor_values[sensorValueIdx].value);
-        } else if (!strcmp(sensor_values[sensorValueIdx].key, "D")) {
-            frame_buffer = processMoveRight(frame_buffer, width, height, sensor_values[sensorValueIdx].value);
-        } else if (!strcmp(sensor_values[sensorValueIdx].key, "CW")) {
-            frame_buffer = processRotateCW(frame_buffer, width, height, sensor_values[sensorValueIdx].value);
-        } else if (!strcmp(sensor_values[sensorValueIdx].key, "CCW")) {
-            frame_buffer = processRotateCCW(frame_buffer, width, height, sensor_values[sensorValueIdx].value);
-        } else if (!strcmp(sensor_values[sensorValueIdx].key, "MX")) {
-            frame_buffer = processMirrorX(frame_buffer, width, height, sensor_values[sensorValueIdx].value);
-        } else if (!strcmp(sensor_values[sensorValueIdx].key, "MY")) {
-            frame_buffer = processMirrorY(frame_buffer, width, height, sensor_values[sensorValueIdx].value);
-        }
-    }
-}
-
-
 void implementation_driver(struct kv *sensor_values, int sensor_values_count, unsigned char *frame_buffer,
                            unsigned int width, unsigned int height, bool grading_mode) {
-    // DEBUG: make a copy of the original frame
-    //unsigned char *reference_frame = allocateFrame(width, height);
-    //reference_frame = copyFrame(frame_buffer, reference_frame, width, height);
-    //implementation_driver_ref(sensor_values, sensor_values_count, reference_frame, width, height, grading_mode);
-    
-    // DEBUG: print original and ref frame
-	//printf("Original:\n");
-    //print_frame_buffer_to_terminal(frame_buffer, width, height);
-	//printf("Reference:\n");
-	//print_frame_buffer_to_terminal(reference_frame, width, height);
+	// Set up double buffer frame for rotations
+	double_buffer_frame = allocateFrame(width, height);
     
     // Iterate over every group of 25 sensor values
     for (int sensorValueIdx = 0; sensorValueIdx < sensor_values_count; sensorValueIdx += 25) {
@@ -558,12 +514,11 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
     	// Process this group of 25 sensor values
     	frame_buffer = compound_sensor_values(frame_buffer, sensor_values, sensorValueIdx, width, height);
     	
-    	// DEBUG: print processed frame
-		//printf("After %d iterations:\n", (sensorValueIdx + 1) * 25);
-		//print_frame_buffer_to_terminal(frame_buffer, width, height);
-    	
     	// Verify the new frame
         verifyFrame(frame_buffer, width, height, grading_mode);
     }
+    
+    // Free double buffer frame for rotations
+    //deallocateFrame(double_buffer_frame);
 }
 
