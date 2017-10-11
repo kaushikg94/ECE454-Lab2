@@ -440,7 +440,7 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
 			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
 				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * sensorValue;
 			} else /* ROTATION_LEFT */ {
-				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * sensorValue;
+				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * sensorValue;
 			}
 		}
     }
@@ -527,6 +527,6 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
     }
     
     // Free double buffer frame for rotations
-    //deallocateFrame(double_buffer_frame);
+    //deallocateFrame(double_buffer_frame); TODO
 }
 
