@@ -1,6 +1,10 @@
 #ifndef ECE454_LAB2_IMPLEMENTATION_REFERENCE_H
 #define ECE454_LAB2_IMPLEMENTATION_REFERENCE_H
 
+//#define PRINT_DEBUG_INFO 0 // Print info about compounded 25 sensor values
+//#define DISPLAY_IMAGE_IN_TERMINAL 0 // Displays each verification frame in terminal
+//#define SKIP_VERIFICATION 0 // Skips verification and reference implementation (for gprof)
+
 /***********************************************************************************************************************
  * Warning: DO NOT MODIFY or SUBMIT this file
  **********************************************************************************************************************/

@@ -4,9 +4,6 @@
 #include "utilities.h"  // DO NOT REMOVE this line
 #include "implementation_reference.h"   // DO NOT REMOVE this line
 
-//#define PRINT_DEBUG_INFO 0 // Print info about compounded 25 sensor values
-//#define DISPLAY_IMAGE_IN_TERMINAL 0 // Displays each verification frame in terminal
-
 // Declarations
 unsigned char *processMoveUp(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
 unsigned char *processMoveLeft(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
@@ -16,8 +13,17 @@ unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsi
 unsigned char *processRotateCCW(unsigned char *buffer_frame, unsigned width, unsigned height, int count);
 void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int width, unsigned int height);
 
+// Stores pre-rotated versions of the starting image
+unsigned char *uprightFrame, *rightFrame, *upsideDownFrame, *leftFrame;
+
 // Temporary image buffer for use by some transformations
-unsigned char *double_buffer_frame;
+unsigned char *doubleBufferFrame;
+
+// Faster implementation of copy frame
+unsigned char* fastCopyFrame(unsigned char* src, unsigned char* dst, unsigned width, unsigned height) {
+    memcpy(dst, src, width * height * 3);
+    return dst;
+}
 
 /***********************************************************************************************************************
  * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
@@ -174,18 +180,18 @@ unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsi
 				for(unsigned v = vTileIndex * TILE_SIZE; v < vLimit; v++) {
 					unsigned sourcePixelIndex = (height - 1 - v) * width * 3 + u * 3;
 					unsigned destinationPixelIndex = u * width * 3 + v * 3;
-					double_buffer_frame[destinationPixelIndex] = buffer_frame[sourcePixelIndex];
-					double_buffer_frame[destinationPixelIndex + 1] = buffer_frame[sourcePixelIndex + 1];
-					double_buffer_frame[destinationPixelIndex + 2] = buffer_frame[sourcePixelIndex + 2];
+					doubleBufferFrame[destinationPixelIndex] = buffer_frame[sourcePixelIndex];
+					doubleBufferFrame[destinationPixelIndex + 1] = buffer_frame[sourcePixelIndex + 1];
+					doubleBufferFrame[destinationPixelIndex + 2] = buffer_frame[sourcePixelIndex + 2];
 				}
 			}
 		}
 	}
     
-    // Swap buffer_frame and double_buffer_frame
+    // Swap buffer_frame and doubleBufferFrame
     unsigned char *temp = buffer_frame;
-    buffer_frame = double_buffer_frame;
-    double_buffer_frame = temp;
+    buffer_frame = doubleBufferFrame;
+    doubleBufferFrame = temp;
 
     // Return pointer to the updated image
     return buffer_frame;
@@ -216,13 +222,13 @@ unsigned char *processMirrorX(unsigned char *buffer_frame, unsigned int width, u
     for (int row = 0; row < height; row++) {
     	int destination = (height - 1 - row) * width * 3;
     	int source = row * width * 3;
-    	memcpy(double_buffer_frame + destination, buffer_frame + source, width * 3);
+    	memcpy(doubleBufferFrame + destination, buffer_frame + source, width * 3);
     }
     
-    // Swap buffer_frame and double_buffer_frame
+    // Swap buffer_frame and doubleBufferFrame
     unsigned char *temp = buffer_frame;
-    buffer_frame = double_buffer_frame;
-    double_buffer_frame = temp;
+    buffer_frame = doubleBufferFrame;
+    doubleBufferFrame = temp;
 
     return buffer_frame;
 }
@@ -323,18 +329,24 @@ void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int wi
 #define SENSOR_D   0b100 // 4
 #define SENSOR_A   0b011 // 3
 
+// Theta values
+#define CW_0   0
+#define CW_90  1
+#define CW_180 2
+#define CW_270 3
+
+// Variables to keep track of current accumulated state
+int currentRotation;
+bool isFlippedAcrossXAxis;
+bool isFlippedAcrossYAxis;
+int accumulatedXTranslation;
+int accumulatedYTranslation;
+
 // Function that compounds 25 sensor values into up to 3 transformations
 static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *sensor_values,
 									  int startingSensorValueIdx, unsigned int width, unsigned int height) {
-    // Variables to keep track of current accumulated state
-    int currentRotation = ROTATION_UPRIGHT;
-    bool isFlippedAcrossXAxis = false;
-    bool isFlippedAcrossYAxis = false;
-    int accumulatedXTranslation = 0;
-    int accumulatedYTranslation = 0;
-    
     // Iterate over every sensor value
-    for (int sensorValueIdx = startingSensorValueIdx; sensorValueIdx < startingSensorValueIdx + 25; sensorValueIdx++) {
+    for(int sensorValueIdx = startingSensorValueIdx; sensorValueIdx < startingSensorValueIdx + 25; sensorValueIdx++) {
     	// Determine the current sensor key and value
     	int sensorKey;
     	int sensorValue = sensor_values[sensorValueIdx].value;
@@ -368,80 +380,79 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
     	}
     	
 		// Rotations affect rotation state
-		if (sensorKey == SENSOR_CW) {
-			currentRotation = (currentRotation + sensorValue) % 4;
-		} else if (sensorKey == SENSOR_CCW) {
-			currentRotation = (currentRotation - sensorValue) % 4;
-			if(currentRotation < 0) {
-				currentRotation = 4 + currentRotation;
+		if(sensorKey == SENSOR_CW || sensorKey == SENSOR_CCW) {
+			int newRotation;
+			if(sensorKey == SENSOR_CW) {
+				newRotation = (currentRotation + sensorValue) % 4;
+			} else if(sensorKey == SENSOR_CCW) {
+				newRotation = (currentRotation - sensorValue) % 4;
+				if(newRotation < 0) {
+					newRotation = 4 + newRotation;
+				}
+			}
+		
+			// Transform translations
+			int theta;
+			if(currentRotation == newRotation) {
+				continue;
+			} else if(currentRotation < newRotation) {
+				theta = newRotation - currentRotation;
+			} else /* currentRotation > newRotation */ {
+				theta = newRotation + 4 - currentRotation;
+			}
+			theta = 4 - theta;
+#ifdef PRINT_DEBUG_INFO
+			printf("theta: %d\n", theta);
+#endif
+
+			int cos[4] = {1, 0, -1, 0};
+			int sin[4] = {0, 1, 0, -1};
+			int rotationMatrix[2][2] =
+				{{cos[theta],-sin[theta]}, // 
+				 {sin[theta],cos[theta]}}; // 
+		
+			int transformedXTranslation =
+				rotationMatrix[0][0] * accumulatedXTranslation + rotationMatrix[0][1] * accumulatedYTranslation;
+			int transformedYTranslation =
+				rotationMatrix[1][0] * accumulatedXTranslation + rotationMatrix[1][1] * accumulatedYTranslation;
+			accumulatedXTranslation = transformedXTranslation;
+			accumulatedYTranslation = transformedYTranslation;
+			currentRotation = newRotation;
+			
+			// Transform flips
+			if(theta == CW_0) {
+				// Do nothing
+			} else if(theta == CW_90) {
+				int temp = isFlippedAcrossXAxis;
+				isFlippedAcrossXAxis = isFlippedAcrossYAxis;
+				isFlippedAcrossYAxis = temp;
+			} else if(theta == CW_180) {
+				// Do nothing
+			} else if(theta == CW_270) {
+				int temp = isFlippedAcrossXAxis;
+				isFlippedAcrossXAxis = isFlippedAcrossYAxis;
+				isFlippedAcrossYAxis = temp;
 			}
 		}
 		
 		// Flips affect flip state
-		else if (sensorKey == SENSOR_MX) {
-			if(currentRotation == ROTATION_UPRIGHT) {
-				isFlippedAcrossXAxis = !isFlippedAcrossXAxis;
-			} else if(currentRotation == ROTATION_RIGHT) {
-				isFlippedAcrossYAxis = !isFlippedAcrossYAxis;
-			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				isFlippedAcrossXAxis = !isFlippedAcrossXAxis;
-			} else /* ROTATION_LEFT */ {
-				isFlippedAcrossYAxis = !isFlippedAcrossYAxis;
-			}
-		} else if (sensorKey == SENSOR_MY) {
-			if(currentRotation == ROTATION_UPRIGHT) {
-				isFlippedAcrossYAxis = !isFlippedAcrossYAxis;
-			} else if(currentRotation == ROTATION_RIGHT) {
-				isFlippedAcrossXAxis = !isFlippedAcrossXAxis;
-			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				isFlippedAcrossYAxis = !isFlippedAcrossYAxis;
-			} else /* ROTATION_LEFT */ {
-				isFlippedAcrossXAxis = !isFlippedAcrossXAxis;
-			}
+		else if(sensorKey == SENSOR_MX) {
+			isFlippedAcrossXAxis = !isFlippedAcrossXAxis;
+			accumulatedYTranslation = -accumulatedYTranslation;
+		} else if(sensorKey == SENSOR_MY) {
+			isFlippedAcrossYAxis = !isFlippedAcrossYAxis;
+			accumulatedXTranslation = -accumulatedXTranslation;
 		}
 		
 		// Compute translation state based on current rotation and flip state
-		else if (sensorKey == SENSOR_W) { // Up
-			if(currentRotation == ROTATION_UPRIGHT) {
-				// The motion here should be the motion in the rotated space, but the translation in the og space
-				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * sensorValue;
-			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * sensorValue;
-			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * sensorValue;
-			} else /* ROTATION_LEFT */ {
-				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * sensorValue;
-			}
-		} else if (sensorKey == SENSOR_S) { // Down
-			if(currentRotation == ROTATION_UPRIGHT) {
-				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * sensorValue;
-			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * sensorValue;
-			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * sensorValue;
-			} else /* ROTATION_LEFT */ {
-				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * sensorValue;
-			}
-		} else if (sensorKey == SENSOR_D) { // Right
-			if(currentRotation == ROTATION_UPRIGHT) {
-				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * sensorValue;
-			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * sensorValue;
-			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * sensorValue;
-			} else /* ROTATION_LEFT */ {
-				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * sensorValue;
-			}
-		} else if (sensorKey == SENSOR_A) { // Left
-			if(currentRotation == ROTATION_UPRIGHT) {
-				accumulatedXTranslation += (isFlippedAcrossYAxis ? 1 : -1) * sensorValue;
-			} else if(currentRotation == ROTATION_RIGHT) {
-				accumulatedYTranslation += (isFlippedAcrossXAxis ? 1 : -1) * sensorValue;
-			} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-				accumulatedXTranslation += (isFlippedAcrossYAxis ? -1 : 1) * sensorValue;
-			} else /* ROTATION_LEFT */ {
-				accumulatedYTranslation += (isFlippedAcrossXAxis ? -1 : 1) * sensorValue;
-			}
+		else if(sensorKey == SENSOR_W) { // Up
+			accumulatedYTranslation += sensorValue;
+		} else if(sensorKey == SENSOR_S) { // Down
+			accumulatedYTranslation -= sensorValue;
+		} else if(sensorKey == SENSOR_D) { // Right
+			accumulatedXTranslation += sensorValue;
+		} else if(sensorKey == SENSOR_A) { // Left
+			accumulatedXTranslation -= sensorValue;
 		}
     }
     
@@ -451,9 +462,28 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
     printf("flipped across x: %d, flipped across y: %d\n", isFlippedAcrossXAxis, isFlippedAcrossYAxis);
     printf("rotation: %d\n", currentRotation);
 #endif
-    
-    // Apply the translations
-    if(accumulatedXTranslation > 0) {
+
+	// Pick the starting rotations
+	if(currentRotation == ROTATION_UPRIGHT) {
+		fastCopyFrame(uprightFrame, frame_buffer, width, height);
+	} else if(currentRotation == ROTATION_RIGHT) {
+		fastCopyFrame(rightFrame, frame_buffer, width, height);
+	} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
+		fastCopyFrame(upsideDownFrame, frame_buffer, width, height);
+	} else /* ROTATION_LEFT */ {
+		fastCopyFrame(leftFrame, frame_buffer, width, height);
+	}
+	
+	// Apply the flips
+	if(isFlippedAcrossXAxis) {
+    	frame_buffer = processMirrorX(frame_buffer, width, height, 1);
+    }
+    if(isFlippedAcrossYAxis) {
+    	frame_buffer = processMirrorY(frame_buffer, width, height, 1);
+    }
+	
+	// Apply the translations
+	if(accumulatedXTranslation > 0) {
 		frame_buffer = processMoveRight(frame_buffer, width, height, accumulatedXTranslation);
 	} else if(accumulatedXTranslation < 0) {
 		frame_buffer = processMoveLeft(frame_buffer, width, height, accumulatedXTranslation * -1);
@@ -463,22 +493,6 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
 	} else if(accumulatedYTranslation < 0) {
 		frame_buffer = processMoveDown(frame_buffer, width, height, accumulatedYTranslation * -1);
 	}
-    
-    // Apply the flips
-    if(isFlippedAcrossXAxis) {
-    	frame_buffer = processMirrorX(frame_buffer, width, height, 1);
-    }
-    if(isFlippedAcrossYAxis) {
-    	frame_buffer = processMirrorY(frame_buffer, width, height, 1);
-    }
-    
-    // Apply the rotations
-    if(currentRotation != ROTATION_UPRIGHT) {
-    	while(currentRotation != ROTATION_UPRIGHT) {
-    		frame_buffer = processRotateCW(frame_buffer, width, height);
-    		currentRotation--;
-    	}
-    }
     
     return frame_buffer;
 }
@@ -499,8 +513,32 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
  **********************************************************************************************************************/
 void implementation_driver(struct kv *sensor_values, int sensor_values_count, unsigned char *frame_buffer,
                            unsigned int width, unsigned int height, bool grading_mode) {
+    // Reset global state
+	currentRotation = ROTATION_UPRIGHT;
+	isFlippedAcrossXAxis = false;
+	isFlippedAcrossYAxis = false;
+	accumulatedXTranslation = 0;
+	accumulatedYTranslation = 0;
+
 	// Set up double buffer frame for rotations
-	double_buffer_frame = allocateFrame(width, height);
+	doubleBufferFrame = allocateFrame(width, height);
+	
+	// Pre-rotate starting image to all 4 orientations
+	uprightFrame = allocateFrame(width, height);
+	rightFrame = allocateFrame(width, height);
+	upsideDownFrame = allocateFrame(width, height);
+	leftFrame = allocateFrame(width, height);
+	
+	fastCopyFrame(frame_buffer, uprightFrame, width, height);
+	
+	fastCopyFrame(frame_buffer, rightFrame, width, height);
+	rightFrame = processRotateCW(rightFrame, width, height);
+	
+	fastCopyFrame(rightFrame, upsideDownFrame, width, height);
+	upsideDownFrame = processRotateCW(upsideDownFrame, width, height);
+	
+	fastCopyFrame(upsideDownFrame, leftFrame, width, height);
+	leftFrame = processRotateCW(leftFrame, width, height);
 	
 #ifdef DISPLAY_IMAGE_IN_TERMINAL
 		printf("Starting frame:\n");
@@ -523,10 +561,16 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
 #endif
     	
     	// Verify the new frame
-        verifyFrame(frame_buffer, width, height, grading_mode); //TODO
+#ifndef SKIP_VERIFICATION
+        verifyFrame(frame_buffer, width, height, grading_mode);
+#endif
     }
     
-    // Free double buffer frame for rotations
-    //deallocateFrame(double_buffer_frame); TODO
+    // Free temporary buffers
+    //deallocateFrame(doubleBufferFrame); TODO
+    deallocateFrame(uprightFrame);
+    deallocateFrame(rightFrame);
+    deallocateFrame(upsideDownFrame);
+    deallocateFrame(leftFrame);
 }
 
