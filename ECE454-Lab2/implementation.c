@@ -337,7 +337,8 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
     for (int sensorValueIdx = startingSensorValueIdx; sensorValueIdx < startingSensorValueIdx + 25; sensorValueIdx++) {
     	// Determine the current sensor key and value
     	int sensorKey;
-    	int sensorValue;
+    	int sensorValue = sensor_values[sensorValueIdx].value;
+    	if(sensorValue == 0) continue;
     	{
     		// Map the current sensor key to a sensor key int
 			char firstLetter = sensor_values[sensorValueIdx].key[0];
@@ -360,7 +361,6 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
 			}
 			
 			// If the sensor value is negative, use the opposite operation
-			sensorValue = sensor_values[sensorValueIdx].value;
 			if(sensorValue < 0 && (sensorKey != SENSOR_MX && sensorKey != SENSOR_MY)) {
 				sensorKey = ~sensorKey & 0b0111;
 				sensorValue = 0 - sensorValue;
