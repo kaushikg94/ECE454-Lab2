@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <time.h> // TODO remove
 #include "utilities.h"  // DO NOT REMOVE this line
 #include "implementation_reference.h"   // DO NOT REMOVE this line
 
@@ -17,12 +18,37 @@ void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int wi
 unsigned char *uprightFrame, *rightFrame, *upsideDownFrame, *leftFrame;
 
 // Temporary image buffer for use by some transformations
-unsigned char *doubleBufferFrame;
+unsigned char *firstBuffer, *secondBuffer;
 
 // Faster implementation of copy frame
 unsigned char* fastCopyFrame(unsigned char* src, unsigned char* dst, unsigned width, unsigned height) {
     memcpy(dst, src, width * height * 3);
     return dst;
+}
+
+// Functions to compute each starting rotation orientation
+void computeRightFrame(int width, int height) {
+	rightFrame = allocateFrame(width, height);
+	fastCopyFrame(uprightFrame, rightFrame, width, height);
+	rightFrame = processRotateCW(rightFrame, width, height);
+}
+
+void computeUpsideDownFrame(int width, int height) {
+	if(rightFrame == NULL) {
+		computeRightFrame(width, height);
+	}
+	upsideDownFrame = allocateFrame(width, height);
+	fastCopyFrame(rightFrame, upsideDownFrame, width, height);
+	upsideDownFrame = processRotateCW(upsideDownFrame, width, height);
+}
+
+void computeLeftFrame(int width, int height) {
+	if(upsideDownFrame == NULL) {
+		computeUpsideDownFrame(width, height);
+	}
+	leftFrame = allocateFrame(width, height);
+	fastCopyFrame(upsideDownFrame, leftFrame, width, height);
+	leftFrame = processRotateCW(leftFrame, width, height);
 }
 
 /***********************************************************************************************************************
@@ -180,18 +206,18 @@ unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsi
 				for(unsigned v = vTileIndex * TILE_SIZE; v < vLimit; v++) {
 					unsigned sourcePixelIndex = (height - 1 - v) * width * 3 + u * 3;
 					unsigned destinationPixelIndex = u * width * 3 + v * 3;
-					doubleBufferFrame[destinationPixelIndex] = buffer_frame[sourcePixelIndex];
-					doubleBufferFrame[destinationPixelIndex + 1] = buffer_frame[sourcePixelIndex + 1];
-					doubleBufferFrame[destinationPixelIndex + 2] = buffer_frame[sourcePixelIndex + 2];
+					secondBuffer[destinationPixelIndex] = buffer_frame[sourcePixelIndex];
+					secondBuffer[destinationPixelIndex + 1] = buffer_frame[sourcePixelIndex + 1];
+					secondBuffer[destinationPixelIndex + 2] = buffer_frame[sourcePixelIndex + 2];
 				}
 			}
 		}
 	}
     
-    // Swap buffer_frame and doubleBufferFrame
+    // Swap buffer_frame and secondBuffer
     unsigned char *temp = buffer_frame;
-    buffer_frame = doubleBufferFrame;
-    doubleBufferFrame = temp;
+    buffer_frame = secondBuffer;
+    secondBuffer = temp;
 
     // Return pointer to the updated image
     return buffer_frame;
@@ -222,13 +248,13 @@ unsigned char *processMirrorX(unsigned char *buffer_frame, unsigned int width, u
     for (int row = 0; row < height; row++) {
     	int destination = (height - 1 - row) * width * 3;
     	int source = row * width * 3;
-    	memcpy(doubleBufferFrame + destination, buffer_frame + source, width * 3);
+    	memcpy(secondBuffer + destination, buffer_frame + source, width * 3);
     }
     
-    // Swap buffer_frame and doubleBufferFrame
+    // Swap buffer_frame and secondBuffer
     unsigned char *temp = buffer_frame;
-    buffer_frame = doubleBufferFrame;
-    doubleBufferFrame = temp;
+    buffer_frame = secondBuffer;
+    secondBuffer = temp;
 
     return buffer_frame;
 }
@@ -465,12 +491,16 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
 
 	// Pick the starting rotations
 	if(currentRotation == ROTATION_UPRIGHT) {
+		// Upright frame is always computed
 		fastCopyFrame(uprightFrame, frame_buffer, width, height);
 	} else if(currentRotation == ROTATION_RIGHT) {
+		if(rightFrame == NULL) computeRightFrame(width, height);
 		fastCopyFrame(rightFrame, frame_buffer, width, height);
 	} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
+		if(upsideDownFrame == NULL) computeUpsideDownFrame(width, height);
 		fastCopyFrame(upsideDownFrame, frame_buffer, width, height);
 	} else /* ROTATION_LEFT */ {
+		if(leftFrame == NULL) computeLeftFrame(width, height);
 		fastCopyFrame(leftFrame, frame_buffer, width, height);
 	}
 	
@@ -513,6 +543,14 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
  **********************************************************************************************************************/
 void implementation_driver(struct kv *sensor_values, int sensor_values_count, unsigned char *frame_buffer,
                            unsigned int width, unsigned int height, bool grading_mode) {
+    // Reset temporary frame buffers
+    firstBuffer = NULL;
+    secondBuffer = NULL;
+    uprightFrame = NULL;
+    rightFrame = NULL;
+    upsideDownFrame = NULL;
+    leftFrame = NULL;
+    
     // Reset global state
 	currentRotation = ROTATION_UPRIGHT;
 	isFlippedAcrossXAxis = false;
@@ -521,28 +559,17 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
 	accumulatedYTranslation = 0;
 
 	// Set up double buffer frame for rotations
-	doubleBufferFrame = allocateFrame(width, height);
+	firstBuffer = allocateFrame(width, height);
+	fastCopyFrame(frame_buffer, firstBuffer, width, height);
+	secondBuffer = allocateFrame(width, height);
 	
-	// Pre-rotate starting image to all 4 orientations
+	// Store upright starting frame (others are computed as needed)
 	uprightFrame = allocateFrame(width, height);
-	rightFrame = allocateFrame(width, height);
-	upsideDownFrame = allocateFrame(width, height);
-	leftFrame = allocateFrame(width, height);
-	
-	fastCopyFrame(frame_buffer, uprightFrame, width, height);
-	
-	fastCopyFrame(frame_buffer, rightFrame, width, height);
-	rightFrame = processRotateCW(rightFrame, width, height);
-	
-	fastCopyFrame(rightFrame, upsideDownFrame, width, height);
-	upsideDownFrame = processRotateCW(upsideDownFrame, width, height);
-	
-	fastCopyFrame(upsideDownFrame, leftFrame, width, height);
-	leftFrame = processRotateCW(leftFrame, width, height);
+	fastCopyFrame(firstBuffer, uprightFrame, width, height);
 	
 #ifdef DISPLAY_IMAGE_IN_TERMINAL
 		printf("Starting frame:\n");
-    	print_frame_buffer_to_terminal(frame_buffer, width, height);
+    	print_frame_buffer_to_terminal(firstBuffer, width, height);
 #endif
     
     // Iterate over every group of 25 sensor values
@@ -554,23 +581,30 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
     	}
     	
     	// Process this group of 25 sensor values
-    	frame_buffer = compound_sensor_values(frame_buffer, sensor_values, sensorValueIdx, width, height);
+    	firstBuffer = compound_sensor_values(firstBuffer, sensor_values, sensorValueIdx, width, height);
 #ifdef DISPLAY_IMAGE_IN_TERMINAL
 		printf("Frame %d:\n", (sensorValueIdx / 25 + 1));
-    	print_frame_buffer_to_terminal(frame_buffer, width, height);
+    	print_frame_buffer_to_terminal(firstBuffer, width, height);
 #endif
     	
     	// Verify the new frame
 #ifndef SKIP_VERIFICATION
-        verifyFrame(frame_buffer, width, height, grading_mode);
+        verifyFrame(firstBuffer, width, height, grading_mode);
 #endif
     }
     
     // Free temporary buffers
-    //deallocateFrame(doubleBufferFrame); TODO
+    deallocateFrame(firstBuffer);
+    deallocateFrame(secondBuffer);
     deallocateFrame(uprightFrame);
-    deallocateFrame(rightFrame);
-    deallocateFrame(upsideDownFrame);
-    deallocateFrame(leftFrame);
+    if(rightFrame != NULL) {
+    	deallocateFrame(rightFrame);
+	}
+    if(upsideDownFrame != NULL) {
+    	deallocateFrame(upsideDownFrame);
+	}
+    if(leftFrame != NULL) {
+    	deallocateFrame(leftFrame);
+	}
 }
 
