@@ -148,6 +148,7 @@ void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int wi
 void transformPixels(Pixel *pixels, int accumulatedXTranslation, int accumulatedYTranslation,
 					 bool isFlippedAcrossXAxis, bool isFlippedAcrossYAxis, int currentRotation) {
 	// Apply transformation to each pixel
+	int sizeOver2 = width / 2;
 	for(int i = 0; i < nNonWhitePixels; i++) {
 		// Transform from row,col space to x,y space
 		short x = pixels[i].col;
@@ -164,28 +165,28 @@ void transformPixels(Pixel *pixels, int accumulatedXTranslation, int accumulated
 		if(currentRotation == ROTATION_UPRIGHT) {
 			// Do nothing
 		} else if(currentRotation == ROTATION_RIGHT) {
-			x -= width / 2;
-			y -= height / 2;
+			x -= sizeOver2;
+			y -= sizeOver2;
 			short temp = x;
 			x = y;
 			y = -temp - 1;
-			x += width / 2;
-			y += height / 2;
+			x += sizeOver2;
+			y += sizeOver2;
 		} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
-			x -= width / 2;
-			y -= height / 2;
+			x -= sizeOver2;
+			y -= sizeOver2;
 			x = -x - 1;
 			y = -y - 1;
-			x += width / 2;
-			y += height / 2;
+			x += sizeOver2;
+			y += sizeOver2;
 		} else /* ROTATION_LEFT */ {
-			x -= width / 2;
-			y -= height / 2;
+			x -= sizeOver2;
+			y -= sizeOver2;
 			short temp = x;
 			x = -y - 1;
 			y = temp;
-			x += width / 2;
-			y += height / 2;
+			x += sizeOver2;
+			y += sizeOver2;
 		}
 		
 		// Transform from x,y space to row,col space
