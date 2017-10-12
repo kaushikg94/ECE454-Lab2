@@ -35,21 +35,26 @@ void detectNonWhitePixels(unsigned char *image) {
 #endif
 	nonWhitePixels = (Pixel *) malloc(initialSize * sizeof(Pixel));
 	
-	// Iterate through each pixel
-	for(int row = 0; row < width; row++) {
-		for(int col = 0; col < height; col++) {
-			unsigned char r = image[row * width * 3 + col * 3];
-			unsigned char g = image[row * width * 3 + col * 3 + 1];
-			unsigned char b = image[row * width * 3 + col * 3 + 2];
-			if(r != 255 || g != 255 || b != 255) {
-				// Found a new non-white pixel
-				nonWhitePixels[nNonWhitePixels].row = row;
-				nonWhitePixels[nNonWhitePixels].col = col;
-				nonWhitePixels[nNonWhitePixels].r = r;
-				nonWhitePixels[nNonWhitePixels].g = g;
-				nonWhitePixels[nNonWhitePixels].b = b;
-				nNonWhitePixels++;
-			}
+	// Iterate through array of pixels
+	int nPixelColours = nPixels * 3;
+	int row = 0, col = 0;
+	for(int i = 0; i < nPixelColours; i += 3) {
+		unsigned char r = image[i];
+		unsigned char g = image[i + 1];
+		unsigned char b = image[i + 2];
+		if(r + g + b < 765) {
+			// Found a new non-white pixel
+			nonWhitePixels[nNonWhitePixels].row = row;
+			nonWhitePixels[nNonWhitePixels].col = col;
+			nonWhitePixels[nNonWhitePixels].r = r;
+			nonWhitePixels[nNonWhitePixels].g = g;
+			nonWhitePixels[nNonWhitePixels].b = b;
+			nNonWhitePixels++;
+		}
+		col++;
+		if(col == width) {
+			row++;
+			col = 0;
 		}
 	}
 #ifdef PRINT_DEBUG_INFO
