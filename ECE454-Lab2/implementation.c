@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <time.h> // TODO remove
@@ -6,285 +7,68 @@
 #include "implementation_reference.h"   // DO NOT REMOVE this line
 
 // Declarations
-unsigned char *processMoveUp(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
-unsigned char *processMoveLeft(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
-unsigned char *processMoveDown(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
-unsigned char *processMoveRight(unsigned char *buffer_frame, unsigned width, unsigned height, int offset);
-unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsigned height);
-unsigned char *processRotateCCW(unsigned char *buffer_frame, unsigned width, unsigned height, int count);
 void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int width, unsigned int height);
 
-// Stores pre-rotated versions of the starting image
-unsigned char *uprightFrame, *rightFrame, *upsideDownFrame, *leftFrame;
+// Structure representing a non-white pixel in the image
+typedef struct  {
+	short row, col;
+	unsigned char r, g, b;
+} Pixel;
+
+// Image dimensions
+int width, height;
+
+// Number of non-white pixels in the image (lengths of below arrays)
+int nNonWhitePixels;
 
 // Temporary image buffer for use by some transformations
-unsigned char *firstBuffer, *secondBuffer;
+Pixel *nonWhitePixels;
 
-// Faster implementation of copy frame
-unsigned char* fastCopyFrame(unsigned char* src, unsigned char* dst, unsigned width, unsigned height) {
-    memcpy(dst, src, width * height * 3);
-    return dst;
-}
-
-// Functions to compute each starting rotation orientation
-void computeRightFrame(int width, int height) {
-	rightFrame = allocateFrame(width, height);
-	fastCopyFrame(uprightFrame, rightFrame, width, height);
-	rightFrame = processRotateCW(rightFrame, width, height);
-}
-
-void computeUpsideDownFrame(int width, int height) {
-	if(rightFrame == NULL) {
-		computeRightFrame(width, height);
-	}
-	upsideDownFrame = allocateFrame(width, height);
-	fastCopyFrame(rightFrame, upsideDownFrame, width, height);
-	upsideDownFrame = processRotateCW(upsideDownFrame, width, height);
-}
-
-void computeLeftFrame(int width, int height) {
-	if(upsideDownFrame == NULL) {
-		computeUpsideDownFrame(width, height);
-	}
-	leftFrame = allocateFrame(width, height);
-	fastCopyFrame(upsideDownFrame, leftFrame, width, height);
-	leftFrame = processRotateCW(leftFrame, width, height);
-}
-
-/***********************************************************************************************************************
- * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
- * @param width - width of the imported 24-bit bitmap image
- * @param height - height of the imported 24-bit bitmap image
- * @param offset - number of pixels to shift the object in bitmap image up
- * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
- * Note1: White pixels RGB(255,255,255) are treated as background. Object in the image refers to non-white pixels.
- * Note2: You can assume the object will never be moved off the screen
- **********************************************************************************************************************/
-unsigned char *processMoveUp(unsigned char *buffer_frame, unsigned width, unsigned height, int offset) {
-    // handle negative offsets
-    if (offset < 0) {
-        return processMoveDown(buffer_frame, width, height, offset * -1);
-    }
-    
-    // store shifted pixels to temporary buffer
-    int destination = 0;
-    int source = offset * width * 3;
-	memmove(buffer_frame + destination, buffer_frame + source, (height - offset) * width * 3);
-
-    // fill left over pixels with white pixels
-    destination = (height - offset) * width * 3;
-    memset(buffer_frame + destination, 255, offset * width * 3);
-
-    // return a pointer to the updated image buffer
-    return buffer_frame;
-}
-
-/***********************************************************************************************************************
- * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
- * @param width - width of the imported 24-bit bitmap image
- * @param height - height of the imported 24-bit bitmap image
- * @param offset - number of pixels to shift the object in bitmap image up
- * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
- * Note1: White pixels RGB(255,255,255) are treated as background. Object in the image refers to non-white pixels.
- * Note2: You can assume the object will never be moved off the screen
- **********************************************************************************************************************/
-unsigned char *processMoveDown(unsigned char *buffer_frame, unsigned width, unsigned height, int offset) {
-    // handle negative offsets
-    if (offset < 0) {
-        return processMoveUp(buffer_frame, width, height, offset * -1);
-    }
-
-    // store shifted pixels to temporary buffer
-    int destination = offset * width * 3;
-    int source = 0;
-	memmove(buffer_frame + destination, buffer_frame + source, (height - offset) * width * 3);
-
-    // fill left over pixels with white pixels
-    destination = 0;
-    memset(buffer_frame + destination, 255, offset * width * 3);
-    
-    // return a pointer to the updated image buffer
-    return buffer_frame;
-}
-
-/***********************************************************************************************************************
- * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
- * @param width - width of the imported 24-bit bitmap image
- * @param height - height of the imported 24-bit bitmap image
- * @param offset - number of pixels to shift the object in bitmap image left
- * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
- * Note1: White pixels RGB(255,255,255) are treated as background. Object in the image refers to non-white pixels.
- * Note2: You can assume the object will never be moved off the screen
- **********************************************************************************************************************/
-unsigned char *processMoveRight(unsigned char *buffer_frame, unsigned width, unsigned height, int offset) {
-    // handle negative offsets
-    if (offset < 0) {
-        return processMoveLeft(buffer_frame, width, height, offset * -1);
-    }
-
-    // store shifted pixels to temporary buffer
-    for (int row = 0; row < height; row++) {
-        int position_right = row * width * 3 + offset * 3;
-        int position_left = row * width * 3;
-    	memmove(buffer_frame + position_right, buffer_frame + position_left, (width - offset) * 3);
-    }
-
-    // fill left over pixels with white pixels
-    for (int row = 0; row < height; row++) {
-        for (int column = 0; column < offset * 3; column++) {
-            int position_rendered_frame = row * width * 3 + column;
-            buffer_frame[position_rendered_frame] = 255;
-        }
-    }
-
-    // return a pointer to the updated image buffer
-    return buffer_frame;
-}
-
-/***********************************************************************************************************************
- * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
- * @param width - width of the imported 24-bit bitmap image
- * @param height - height of the imported 24-bit bitmap image
- * @param offset - number of pixels to shift the object in bitmap image right
- * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
- * Note1: White pixels RGB(255,255,255) are treated as background. Object in the image refers to non-white pixels.
- * Note2: You can assume the object will never be moved off the screen
- **********************************************************************************************************************/
-unsigned char *processMoveLeft(unsigned char *buffer_frame, unsigned width, unsigned height, int offset) {
-    // handle negative offsets
-    if (offset < 0) {
-        return processMoveRight(buffer_frame, width, height, offset * -1);
-    }
-
-    // store shifted pixels to temporary buffer
-    for (int row = 0; row < height; row++) {
-        int position_left = row * width * 3;
-        int position_right = row * width * 3 + offset * 3;
-    	memmove(buffer_frame + position_left, buffer_frame + position_right, (width - offset) * 3);
-    }
-
-    // fill left over pixels with white pixels
-    for (int row = 0; row < height; row++) {
-        for (int column = (width - offset) * 3 - 1; column < width * 3; column++) {
-            int position_rendered_frame = row * width * 3 + column;
-            buffer_frame[position_rendered_frame] = 255;
-        }
-    }
-
-    // return a pointer to the updated image buffer
-    return buffer_frame;
-}
-
-/***********************************************************************************************************************
- * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
- * @param width - width of the imported 24-bit bitmap image
- * @param height - height of the imported 24-bit bitmap image
- * @param rotate_iteration - rotate object inside frame buffer clockwise by 90 degrees, <iteration> times
- * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
- * Note: You can assume the frame will always be square and you will be rotating the entire image
- **********************************************************************************************************************/
-#define TILE_SIZE 64 // TODO find optimal size
-unsigned char *processRotateCW(unsigned char *buffer_frame, unsigned width, unsigned height) {
-	// Compute information about tiles
-	// In destination: u=row#, v=col#
-	// In source:      u=col#, v=row#
-	unsigned nTiles = (width + TILE_SIZE - 1) / TILE_SIZE; // Include a partial tile at end if applicable
-	unsigned lastTileSize = width % TILE_SIZE;
-	if(lastTileSize == 0) lastTileSize = TILE_SIZE;
+// Function to detect all non-white pixels
+void detectNonWhitePixels(unsigned char *image) {
+	// Allocate memory for first buffer to be bigger than how many non-white pixels we expect to see
+	int nPixels = width * height;
+	int initialSize = (int) (0.03 * nPixels);
+	if(width < 200) initialSize = nPixels;
+#ifdef PRINT_DEBUG_INFO
+	printf("nPixels: %d\n", initialSize);
+#endif
+	nonWhitePixels = (Pixel *) malloc(initialSize * sizeof(Pixel));
 	
-	// Iterate over each tile
-	for(unsigned uTileIndex = 0; uTileIndex < nTiles; uTileIndex++) {
-		for(unsigned vTileIndex = 0; vTileIndex < nTiles; vTileIndex++) {
-			// Determine current tile size
-			unsigned uLimit = uTileIndex * TILE_SIZE +
-							  ((uTileIndex == nTiles - 1) ? lastTileSize : TILE_SIZE);
-			unsigned vLimit = vTileIndex * TILE_SIZE +
-							  ((vTileIndex == nTiles - 1) ? lastTileSize : TILE_SIZE);
-			
-			// Transform current tile
-			for(unsigned u = uTileIndex * TILE_SIZE; u < uLimit; u++) {
-				for(unsigned v = vTileIndex * TILE_SIZE; v < vLimit; v++) {
-					unsigned sourcePixelIndex = (height - 1 - v) * width * 3 + u * 3;
-					unsigned destinationPixelIndex = u * width * 3 + v * 3;
-					secondBuffer[destinationPixelIndex] = buffer_frame[sourcePixelIndex];
-					secondBuffer[destinationPixelIndex + 1] = buffer_frame[sourcePixelIndex + 1];
-					secondBuffer[destinationPixelIndex + 2] = buffer_frame[sourcePixelIndex + 2];
-				}
+	// Iterate through each pixel
+	for(int row = 0; row < width; row++) {
+		for(int col = 0; col < height; col++) {
+			unsigned char r = image[row * width * 3 + col * 3];
+			unsigned char g = image[row * width * 3 + col * 3 + 1];
+			unsigned char b = image[row * width * 3 + col * 3 + 2];
+			if(r != 255 || g != 255 || b != 255) {
+				// Found a new non-white pixel
+				nonWhitePixels[nNonWhitePixels].row = row;
+				nonWhitePixels[nNonWhitePixels].col = col;
+				nonWhitePixels[nNonWhitePixels].r = r;
+				nonWhitePixels[nNonWhitePixels].g = g;
+				nonWhitePixels[nNonWhitePixels].b = b;
+				nNonWhitePixels++;
 			}
 		}
 	}
-    
-    // Swap buffer_frame and secondBuffer
-    unsigned char *temp = buffer_frame;
-    buffer_frame = secondBuffer;
-    secondBuffer = temp;
-
-    // Return pointer to the updated image
-    return buffer_frame;
+#ifdef PRINT_DEBUG_INFO
+	printf("nNonWhitePixels: %d\n", nNonWhitePixels);
+#endif
 }
 
-/***********************************************************************************************************************
- * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
- * @param width - width of the imported 24-bit bitmap image
- * @param height - height of the imported 24-bit bitmap image
- * @param rotate_iteration - rotate object inside frame buffer counter clockwise by 90 degrees, <iteration> times
- * @return - pointer pointing a buffer storing a modified 24-bit bitmap image
- * Note: You can assume the frame will always be square and you will be rotating the entire image
- **********************************************************************************************************************/
-unsigned char *processRotateCCW(unsigned char *buffer_frame, unsigned width, unsigned height, int count) {
-    printf("WARNING: Not implemented\n");
-    return processRotateCCWReference(buffer_frame, width, height, count);
-}
-
-/***********************************************************************************************************************
- * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
- * @param width - width of the imported 24-bit bitmap image
- * @param height - height of the imported 24-bit bitmap image
- * @param _unused - this field is unused
- * @return
- **********************************************************************************************************************/
-unsigned char *processMirrorX(unsigned char *buffer_frame, unsigned int width, unsigned int height, int _unused) {
-    // Flip the pixels in place
-    for (int row = 0; row < height; row++) {
-    	int destination = (height - 1 - row) * width * 3;
-    	int source = row * width * 3;
-    	memcpy(secondBuffer + destination, buffer_frame + source, width * 3);
-    }
-    
-    // Swap buffer_frame and secondBuffer
-    unsigned char *temp = buffer_frame;
-    buffer_frame = secondBuffer;
-    secondBuffer = temp;
-
-    return buffer_frame;
-}
-
-/***********************************************************************************************************************
- * @param buffer_frame - pointer pointing to a buffer storing the imported 24-bit bitmap image
- * @param width - width of the imported 24-bit bitmap image
- * @param height - height of the imported 24-bit bitmap image
- * @param _unused - this field is unused
- * @return
- **********************************************************************************************************************/
-unsigned char *processMirrorY(unsigned char *buffer_frame, unsigned width, unsigned height, int _unused) {
-    // Flip the pixels in place
-    for (int row = 0; row < height; row++) {
-        for (int column = 0; column < (width / 2); column++) {
-        	int position_left = row * height * 3 + column * 3;
-        	int position_right = row * height * 3 + (width - column - 1) * 3;
-        	unsigned char temp = buffer_frame[position_left];
-        	buffer_frame[position_left] = buffer_frame[position_right];
-        	buffer_frame[position_right] = temp;
-        	temp = buffer_frame[position_left + 1];
-        	buffer_frame[position_left + 1] = buffer_frame[position_right + 1];
-        	buffer_frame[position_right + 1] = temp;
-        	temp = buffer_frame[position_left + 2];
-        	buffer_frame[position_left + 2] = buffer_frame[position_right + 2];
-        	buffer_frame[position_right + 2] = temp;
-        }
-    }
-
-    return buffer_frame;
+// Applies an array of Pixels onto an image, filling the rest with white
+void applyPixels(Pixel *pixels, unsigned char *frame_buffer) {
+	// Bleach our image
+	memset(frame_buffer, 255, width * height * 3);
+	
+	// Apply each non-white pixel
+	for(int i = 0; i < nNonWhitePixels; i++) {
+		Pixel pixel = pixels[i];
+		frame_buffer[pixel.row * width * 3 + pixel.col * 3] = pixel.r;
+		frame_buffer[pixel.row * width * 3 + pixel.col * 3 + 1] = pixel.g;
+		frame_buffer[pixel.row * width * 3 + pixel.col * 3 + 2] = pixel.b;
+	}
 }
 
 /***********************************************************************************************************************
@@ -293,7 +77,7 @@ unsigned char *processMirrorY(unsigned char *buffer_frame, unsigned width, unsig
  **********************************************************************************************************************/
 void print_team_info(){
     // Please modify this field with something interesting
-    char team_name[] = "sponsored-by-Popeyes-Louisiana-Kitchen-for-optimized-chicken";
+    char team_name[] = "sponsored-by-Popeyes";
 
     // Please fill in your information
     char student1_first_name[] = "Rifdhan";
@@ -355,31 +139,66 @@ void print_frame_buffer_to_terminal(unsigned char *frame_buffer, unsigned int wi
 #define SENSOR_D   0b100 // 4
 #define SENSOR_A   0b011 // 3
 
-// Theta values
-#define CW_0   0
-#define CW_90  1
-#define CW_180 2
-#define CW_270 3
-
-// Variables to keep track of current accumulated state
-int currentRotation;
-bool isFlippedAcrossXAxis;
-bool isFlippedAcrossYAxis;
-int accumulatedXTranslation;
-int accumulatedYTranslation;
-
-int tCurrentRotation;
-bool tIsFlippedAcrossXAxis;
-bool tIsFlippedAcrossYAxis;
-int tAccumulatedXTranslation;
-int tAccumulatedYTranslation;
-
-int cos[4] = {1, 0, -1, 0};
-int sin[4] = {0, 1, 0, -1};
+// Applies a set of transformations to a given list of pixels
+void transformPixels(Pixel *pixels, int accumulatedXTranslation, int accumulatedYTranslation,
+					 bool isFlippedAcrossXAxis, bool isFlippedAcrossYAxis, int currentRotation) {
+	// Apply transformation to each pixel
+	for(int i = 0; i < nNonWhitePixels; i++) {
+		// Transform from row,col space to x,y space
+		short x = pixels[i].col;
+		short y = height - 1 - pixels[i].row;
+		//printf("Before: x: %d, y: %d\n", x, y);
+		
+		// Apply transformations in x,y space
+		x += accumulatedXTranslation;
+		y += accumulatedYTranslation;
+		
+		if(isFlippedAcrossXAxis) y = height - 1 - y;
+		if(isFlippedAcrossYAxis) x = width - 1 - x;
+		
+		if(currentRotation == ROTATION_UPRIGHT) {
+			// Do nothing
+		} else if(currentRotation == ROTATION_RIGHT) {
+			x -= width / 2;
+			y -= height / 2;
+			short temp = x;
+			x = y;
+			y = -temp - 1;
+			x += width / 2;
+			y += height / 2;
+		} else if(currentRotation == ROTATION_UPSIDE_DOWN) {
+			x -= width / 2;
+			y -= height / 2;
+			x = -x - 1;
+			y = -y - 1;
+			x += width / 2;
+			y += height / 2;
+		} else /* ROTATION_LEFT */ {
+			x -= width / 2;
+			y -= height / 2;
+			short temp = x;
+			x = -y - 1;
+			y = temp;
+			x += width / 2;
+			y += height / 2;
+		}
+		
+		// Transform from x,y space to row,col space
+		//printf("After:  x: %d, y: %d\n", x, y);
+		pixels[i].col = x;
+		pixels[i].row = height - 1 - y;
+	}
+}
 
 // Function that compounds 25 sensor values into up to 3 transformations
-static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer, struct kv *sensor_values,
-									  int startingSensorValueIdx, unsigned int width, unsigned int height) {
+static inline void compound_sensor_values(Pixel *pixels, struct kv *sensor_values, int startingSensorValueIdx) {
+    // Variables to keep track of current accumulated state
+    int currentRotation = ROTATION_UPRIGHT;
+    bool isFlippedAcrossXAxis = false;
+    bool isFlippedAcrossYAxis = false;
+    int accumulatedXTranslation = 0;
+    int accumulatedYTranslation = 0;
+    
     // Iterate over every sensor value
     for (int sensorValueIdx = startingSensorValueIdx; sensorValueIdx < startingSensorValueIdx + 25; sensorValueIdx++) {
     	// Determine the current sensor key and value
@@ -494,94 +313,14 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
     
 #ifdef PRINT_DEBUG_INFO
 	// DEBUG: print state
-	printf("Before transform:\n");
-    printf("> xTranslate: %d, yTranslate: %d\n", accumulatedXTranslation, accumulatedYTranslation);
-    printf("> flipped across x: %d, flipped across y: %d\n", isFlippedAcrossXAxis, isFlippedAcrossYAxis);
-    printf("> rotation: %d\n", currentRotation);
-#endif
-    
-    // Will store transformed versions of each state variable
-    tCurrentRotation = currentRotation;
-	tIsFlippedAcrossXAxis = isFlippedAcrossXAxis;
-	tIsFlippedAcrossYAxis = isFlippedAcrossYAxis;
-	tAccumulatedXTranslation = accumulatedXTranslation;
-	tAccumulatedYTranslation = accumulatedYTranslation;
-    
-    // "Rotate" the flip to the target rotation space
-    if(isFlippedAcrossXAxis) tAccumulatedYTranslation = -accumulatedYTranslation;
-	if(isFlippedAcrossYAxis) tAccumulatedXTranslation = -accumulatedXTranslation;
-	if(currentRotation == ROTATION_RIGHT || currentRotation == ROTATION_LEFT) {
-		tIsFlippedAcrossXAxis = isFlippedAcrossYAxis;
-		tIsFlippedAcrossYAxis = isFlippedAcrossXAxis;
-	}
-    
-#ifdef PRINT_DEBUG_INFO
-	// DEBUG: print state
-	printf("Mid transform:\n");
-    printf("> xTranslate: %d, yTranslate: %d\n", tAccumulatedXTranslation, tAccumulatedYTranslation);
-    printf("> flipped across x: %d, flipped across y: %d\n", tIsFlippedAcrossXAxis, tIsFlippedAcrossYAxis);
-    printf("> rotation: %d\n", tCurrentRotation);
-#endif
-    
-    // "Rotate" our translation vector to the target rotation space
-    if(currentRotation != ROTATION_UPRIGHT) {
-    	int theta = 4 - currentRotation;
-		int rotationMatrix[2][2] =
-			{{cos[theta],-sin[theta]}, // 
-			 {sin[theta],cos[theta]}}; // 
-
-		int transformedXTranslation =
-			rotationMatrix[0][0] * tAccumulatedXTranslation + rotationMatrix[0][1] * tAccumulatedYTranslation;
-		int transformedYTranslation =
-			rotationMatrix[1][0] * tAccumulatedXTranslation + rotationMatrix[1][1] * tAccumulatedYTranslation;
-		tAccumulatedXTranslation = transformedXTranslation;
-		tAccumulatedYTranslation = transformedYTranslation;
-    }
-    
-#ifdef PRINT_DEBUG_INFO
-	// DEBUG: print state
-	printf("After transform:\n");
-    printf("> xTranslate: %d, yTranslate: %d\n", tAccumulatedXTranslation, tAccumulatedYTranslation);
-    printf("> flipped across x: %d, flipped across y: %d\n", tIsFlippedAcrossXAxis, tIsFlippedAcrossYAxis);
-    printf("> rotation: %d\n", tCurrentRotation);
+    printf("xTranslate: %d, yTranslate: %d\n", accumulatedXTranslation, accumulatedYTranslation);
+    printf("flipped across x: %d, flipped across y: %d\n", isFlippedAcrossXAxis, isFlippedAcrossYAxis);
+    printf("rotation: %d\n", currentRotation);
 #endif
 
-	// Pick the starting rotations
-	if(tCurrentRotation == ROTATION_UPRIGHT) {
-		// Upright frame is always computed
-		fastCopyFrame(uprightFrame, frame_buffer, width, height);
-	} else if(tCurrentRotation == ROTATION_RIGHT) {
-		if(rightFrame == NULL) computeRightFrame(width, height);
-		fastCopyFrame(rightFrame, frame_buffer, width, height);
-	} else if(tCurrentRotation == ROTATION_UPSIDE_DOWN) {
-		if(upsideDownFrame == NULL) computeUpsideDownFrame(width, height);
-		fastCopyFrame(upsideDownFrame, frame_buffer, width, height);
-	} else /* ROTATION_LEFT */ {
-		if(leftFrame == NULL) computeLeftFrame(width, height);
-		fastCopyFrame(leftFrame, frame_buffer, width, height);
-	}
-	
-	// Apply the flips
-	if(tIsFlippedAcrossXAxis) {
-    	frame_buffer = processMirrorX(frame_buffer, width, height, 1);
-    }
-    if(tIsFlippedAcrossYAxis) {
-    	frame_buffer = processMirrorY(frame_buffer, width, height, 1);
-    }
-	
-	// Apply the translations
-	if(tAccumulatedXTranslation > 0) {
-		frame_buffer = processMoveRight(frame_buffer, width, height, tAccumulatedXTranslation);
-	} else if(tAccumulatedXTranslation < 0) {
-		frame_buffer = processMoveLeft(frame_buffer, width, height, tAccumulatedXTranslation * -1);
-	}
-    if(tAccumulatedYTranslation > 0) {
-		frame_buffer = processMoveUp(frame_buffer, width, height, tAccumulatedYTranslation);
-	} else if(tAccumulatedYTranslation < 0) {
-		frame_buffer = processMoveDown(frame_buffer, width, height, tAccumulatedYTranslation * -1);
-	}
-    
-    return frame_buffer;
+	// Apply all transformations
+	transformPixels(pixels, accumulatedXTranslation, accumulatedYTranslation,
+		isFlippedAcrossXAxis, isFlippedAcrossYAxis, currentRotation);
 }
 
 
@@ -599,34 +338,19 @@ static inline unsigned char *compound_sensor_values(unsigned char *frame_buffer,
  *
  **********************************************************************************************************************/
 void implementation_driver(struct kv *sensor_values, int sensor_values_count, unsigned char *frame_buffer,
-                           unsigned int width, unsigned int height, bool grading_mode) {
+                           unsigned int _width, unsigned int _height, bool grading_mode) {
     // Reset temporary frame buffers
-    firstBuffer = NULL;
-    secondBuffer = NULL;
-    uprightFrame = NULL;
-    rightFrame = NULL;
-    upsideDownFrame = NULL;
-    leftFrame = NULL;
+    nNonWhitePixels = 0;
+    nonWhitePixels = NULL;
+    width = _width;
+    height = _height;
     
-    // Reset global state
-	currentRotation = ROTATION_UPRIGHT;
-	isFlippedAcrossXAxis = false;
-	isFlippedAcrossYAxis = false;
-	accumulatedXTranslation = 0;
-	accumulatedYTranslation = 0;
-
-	// Set up double buffer frame for rotations
-	firstBuffer = allocateFrame(width, height);
-	fastCopyFrame(frame_buffer, firstBuffer, width, height);
-	secondBuffer = allocateFrame(width, height);
-	
-	// Store upright starting frame (others are computed as needed)
-	uprightFrame = allocateFrame(width, height);
-	fastCopyFrame(firstBuffer, uprightFrame, width, height);
+    // Find all non-white pixels in the image
+    detectNonWhitePixels(frame_buffer);
 	
 #ifdef DISPLAY_IMAGE_IN_TERMINAL
-		printf("Starting frame:\n");
-    	print_frame_buffer_to_terminal(firstBuffer, width, height);
+	printf("Starting frame:\n");
+	print_frame_buffer_to_terminal(frame_buffer, width, height);
 #endif
     
     // Iterate over every group of 25 sensor values
@@ -638,30 +362,20 @@ void implementation_driver(struct kv *sensor_values, int sensor_values_count, un
     	}
     	
     	// Process this group of 25 sensor values
-    	firstBuffer = compound_sensor_values(firstBuffer, sensor_values, sensorValueIdx, width, height);
+    	compound_sensor_values(nonWhitePixels, sensor_values, sensorValueIdx);
+		applyPixels(nonWhitePixels, frame_buffer);
 #ifdef DISPLAY_IMAGE_IN_TERMINAL
 		printf("Frame %d:\n", (sensorValueIdx / 25 + 1));
-    	print_frame_buffer_to_terminal(firstBuffer, width, height);
+    	print_frame_buffer_to_terminal(frame_buffer, width, height);
 #endif
     	
     	// Verify the new frame
 #ifndef SKIP_VERIFICATION
-        verifyFrame(firstBuffer, width, height, grading_mode);
+        verifyFrame(frame_buffer, width, height, grading_mode);
 #endif
     }
     
     // Free temporary buffers
-    deallocateFrame(firstBuffer);
-    deallocateFrame(secondBuffer);
-    deallocateFrame(uprightFrame);
-    if(rightFrame != NULL) {
-    	deallocateFrame(rightFrame);
-	}
-    if(upsideDownFrame != NULL) {
-    	deallocateFrame(upsideDownFrame);
-	}
-    if(leftFrame != NULL) {
-    	deallocateFrame(leftFrame);
-	}
+    free(nonWhitePixels);
 }
 
